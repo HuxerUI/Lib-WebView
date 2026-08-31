@@ -1,0 +1,32 @@
+plugins {
+    id "com.android.library"
+}
+
+android {
+    namespace = "org.huxerui.lib.webview"
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 23
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    if (rootProject.ext.has("huxeruiUsesSource") && rootProject.gradle.ext.huxeruiUsesSource) {
+        compileOnly project(":HuxerUI")
+    } else if (rootProject.ext.has("huxeruiAndroidArchive")) {
+        compileOnly files(rootProject.gradle.ext.huxeruiAndroidArchive)
+    } else {
+        def huxeruiHome = System.getenv("HUXERUI_HOME")
+        if (huxeruiHome == null || huxeruiHome.isBlank()) {
+            throw new GradleException("HUXERUI_HOME is required to compile the WebView Android library")
+        }
+        compileOnly files("${huxeruiHome}/share/huxerui/platform/android/HuxerUI.aar")
+    }
+}
