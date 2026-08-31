@@ -128,6 +128,18 @@ if (APPLE)
 endif ()
 if (WIN32)
     set(WEBVIEW2_SDK_ROOT "$ENV{WEBVIEW2_SDK_ROOT}" CACHE PATH "Microsoft.Web.WebView2 NuGet package root")
+    if (NOT WEBVIEW2_SDK_ROOT)
+        include(FetchContent)
+        if (POLICY CMP0135)
+            cmake_policy(SET CMP0135 NEW)
+        endif ()
+        FetchContent_Declare(huxerui_webview2_sdk
+                URL "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4191.47/microsoft.web.webview2.1.0.4191.47.nupkg"
+                URL_HASH SHA256=F492BBF547D0DA329553B6727435B677579B1E9F91CC9E4A1AD029366D5F23D0
+        )
+        FetchContent_MakeAvailable(huxerui_webview2_sdk)
+        set(WEBVIEW2_SDK_ROOT "${huxerui_webview2_sdk_SOURCE_DIR}")
+    endif ()
     find_path(WEBVIEW2_INCLUDE_DIRECTORY
             NAMES WebView2.h
             HINTS "${WEBVIEW2_SDK_ROOT}"
@@ -147,11 +159,11 @@ if (WIN32)
     )
     if (NOT WEBVIEW2_INCLUDE_DIRECTORY OR NOT WEBVIEW2_LOADER_LIBRARY)
         message(FATAL_ERROR
-                "WebView requires Microsoft.Web.WebView2; set WEBVIEW2_SDK_ROOT to the extracted NuGet package root"
+                "HuxerUI WebView could not find Microsoft.Web.WebView2 under WEBVIEW2_SDK_ROOT"
         )
     endif ()
     target_include_directories(webview PRIVATE "${WEBVIEW2_INCLUDE_DIRECTORY}")
-    target_compile_definitions(webview PRIVATE WEBVIEW2_STATIC)
+    target_compile_definitions(webview PRIVATE NOMINMAX UNICODE _UNICODE WEBVIEW2_STATIC)
     target_link_libraries(webview PRIVATE "${WEBVIEW2_LOADER_LIBRARY}" Shlwapi)
 endif ()
 

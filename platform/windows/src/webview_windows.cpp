@@ -4,6 +4,9 @@
 
 #include <WebView2.h>
 
+#include <algorithm>
+#include <cctype>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -199,6 +202,12 @@ std::string HtmlWithBaseUrl(const WebViewHtml& html) {
   }
   return "<head><base href=\"" + EscapeHtmlAttribute(html.base_url) + "\"></head>" + html.content;
 }
+
+void EmitLoadError(
+    const std::shared_ptr<WindowsWebViewInstance>& instance,
+    std::string code,
+    std::string message
+);
 
 bool LoadRequest(
     const std::shared_ptr<WindowsWebViewInstance>& instance,
@@ -595,6 +604,7 @@ bool RunCommand(
       instance->web_view->get_CanGoForward(&available);
       return available != FALSE && SUCCEEDED(instance->web_view->GoForward());
     }
+    }
   }
   if (const auto* value = std::get_if<WebViewLoadRequestCommand>(&command)) {
     return LoadRequest(instance, value->request);
@@ -660,6 +670,3 @@ void InstallPlatformWebView(RootContext& root) {
 }
 
 } // namespace huxerui::detail
-#include <algorithm>
-#include <cctype>
-#include <limits>

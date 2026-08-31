@@ -11,10 +11,22 @@ The library uses the platform web engine and integrates it as a HuxerUI `Platfor
 <table>
   <thead>
     <tr>
-      <th colspan="2">macOS</th>
+      <th colspan="2">Windows</th>
     </tr>
   </thead>
   <tbody>
+    <tr>
+      <td colspan="2" align="center">
+        <img
+          src="docs/images/webview-preview-windows.png"
+          alt="HuxerUI WebView preview on Windows"
+          width="760"
+        >
+      </td>
+    </tr>
+    <tr>
+      <th colspan="2">macOS</th>
+    </tr>
     <tr>
       <td colspan="2" align="center">
         <img
@@ -65,7 +77,7 @@ The library uses the platform web engine and integrates it as a HuxerUI `Platfor
 | Android | Android WebView | Android API 23 or later |
 | iOS | WKWebView | iOS 13 or later |
 | macOS | WKWebView | WebKit is linked by the library |
-| Windows | WebView2 | Requires the WebView2 SDK when building and the WebView2 Runtime when running |
+| Windows | WebView2 | Downloads the WebView2 SDK when building and requires the WebView2 Runtime when running |
 | Web | iframe | Subject to browser embedding and cross-origin restrictions |
 
 ## Add the library
@@ -78,18 +90,18 @@ Add the Git repository after the application's `huxerui_add_app` call:
 huxerui_use_library(my_app
         TARGET HuxerUI::WebView
         URL "https://github.com/HuxerUI/Lib-WebView.git"
-        REVISION "<full-commit-sha>"
+        TAG "v0.1.0"
 )
 ```
 
-Replace `<full-commit-sha>` with the complete 40-character SHA of the revision to use. Include the public API with:
+Include the public API with:
 
 ```cpp
 #include <huxerui/webview.h>
 ```
 
-On Windows, set `WEBVIEW2_SDK_ROOT` to the extracted Microsoft WebView2 NuGet package root before configuring the
-project.
+On Windows, the first configure downloads the pinned Microsoft WebView2 SDK. Set `WEBVIEW2_SDK_ROOT` to an extracted
+Microsoft WebView2 NuGet package root to use a local SDK, including for offline builds.
 
 ## Quick start
 
