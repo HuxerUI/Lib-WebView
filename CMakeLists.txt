@@ -1,57 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
-if (HUXERUI_PROJECT_PLAN_OUTPUT)
-    get_filename_component(HUXERUI_PROJECT_PLAN_DIRECTORY
-            "${HUXERUI_PROJECT_PLAN_OUTPUT}"
-            DIRECTORY
-    )
-    file(MAKE_DIRECTORY "${HUXERUI_PROJECT_PLAN_DIRECTORY}")
-    file(WRITE "${HUXERUI_PROJECT_PLAN_OUTPUT}" [=[
-{
-  "schema": 1,
-  "kind": "library",
-  "name": "WebView",
-  "id": "org.huxerui.lib.webview",
-  "target": "webview"
-}
-]=])
-endif ()
-if (HUXERUI_PROJECT_PLAN_ONLY)
-    return()
-endif ()
-
 project(web_view VERSION 0.1.0 LANGUAGES NONE)
 
-enable_language(CXX)
-if (APPLE AND NOT HUXERUI_LIBRARY_GRAPH_ONLY)
-    enable_language(OBJCXX)
-endif ()
-
-if (NOT TARGET HuxerUI::huxerui)
-    set(HUXERUI_HOME "$ENV{HUXERUI_HOME}" CACHE PATH "HuxerUI SDK or source directory")
-    if (HUXERUI_HOME AND EXISTS "${HUXERUI_HOME}/CMakeLists.txt"
-            AND EXISTS "${HUXERUI_HOME}/include/huxerui/huxerui.h")
-        set(HUXERUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(HUXERUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        if (ANDROID)
-            set(HUXERUI_BUILD_SHARED ON CACHE BOOL "" FORCE)
-            set(HUXERUI_BUILD_STATIC OFF CACHE BOOL "" FORCE)
-        else ()
-            set(HUXERUI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-            set(HUXERUI_BUILD_STATIC ON CACHE BOOL "" FORCE)
-        endif ()
-        add_subdirectory("${HUXERUI_HOME}" "${CMAKE_BINARY_DIR}/huxerui-sdk" EXCLUDE_FROM_ALL)
-    else ()
-        if (HUXERUI_HOME)
-            find_package(HuxerUI CONFIG REQUIRED
-                    PATHS "${HUXERUI_HOME}"
-                    NO_DEFAULT_PATH
-                    NO_CMAKE_FIND_ROOT_PATH
-            )
-        else ()
-            find_package(HuxerUI CONFIG REQUIRED)
-        endif ()
-    endif ()
+include("${CMAKE_CURRENT_SOURCE_DIR}/HuxerUIProject.cmake")
+if (HUXERUI_PROJECT_PLAN_ONLY)
+    return()
 endif ()
 
 file(GLOB_RECURSE LIBRARY_SOURCE_FILES CONFIGURE_DEPENDS
@@ -91,19 +44,26 @@ if (EMSCRIPTEN)
     )
     list(APPEND LIBRARY_SOURCE_FILES ${LIBRARY_WEB_SOURCE_FILES})
 endif ()
-if (APPLE AND NOT HUXERUI_LIBRARY_GRAPH_ONLY)
-    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        set(LIBRARY_APPLE_SOURCE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/platform/ios/src")
-    else ()
-        set(LIBRARY_APPLE_SOURCE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/src")
-    endif ()
-    file(GLOB_RECURSE LIBRARY_APPLE_PLATFORM_SOURCE_FILES CONFIGURE_DEPENDS
-            "${LIBRARY_APPLE_SOURCE_DIRECTORY}/*.mm"
+if (APPLE AND NOT IOS)
+    file(GLOB_RECURSE LIBRARY_MACOS_SOURCE_FILES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/src/*.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/src/*.cc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/src/*.cxx"
+            "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/src/*.mm"
     )
-    set_source_files_properties(${LIBRARY_APPLE_PLATFORM_SOURCE_FILES} PROPERTIES
+    set_source_files_properties(${LIBRARY_MACOS_SOURCE_FILES} PROPERTIES
             COMPILE_OPTIONS "-fobjc-arc"
     )
-    list(APPEND LIBRARY_SOURCE_FILES ${LIBRARY_APPLE_PLATFORM_SOURCE_FILES})
+    list(APPEND LIBRARY_SOURCE_FILES ${LIBRARY_MACOS_SOURCE_FILES})
+endif ()
+if (APPLE AND IOS)
+    file(GLOB_RECURSE LIBRARY_IOS_SOURCE_FILES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/platform/ios/src/*.mm"
+    )
+    set_source_files_properties(${LIBRARY_IOS_SOURCE_FILES} PROPERTIES
+            COMPILE_OPTIONS "-fobjc-arc"
+    )
+    list(APPEND LIBRARY_SOURCE_FILES ${LIBRARY_IOS_SOURCE_FILES})
 endif ()
 
 huxerui_add_library(webview

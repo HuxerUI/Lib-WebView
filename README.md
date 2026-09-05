@@ -75,7 +75,7 @@ The library uses the platform web engine and integrates it as a HuxerUI `Platfor
 | Platform | Engine | Notes |
 | --- | --- | --- |
 | Android | Android WebView | Android API 23 or later |
-| iOS | WKWebView | iOS 13 or later |
+| iOS | WKWebView | iOS 15 or later |
 | macOS | WKWebView | WebKit is linked by the library |
 | Windows | WebView2 | Downloads the WebView2 SDK when building and requires the WebView2 Runtime when running |
 | Web | iframe | Subject to browser embedding and cross-origin restrictions |

@@ -1,0 +1,41 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="WebView Preview" Manufacturer="org.huxerui.lib.webview.preview" Version="@HUXERUI_WINDOWS_PROJECT_VERSION@"
+           UpgradeCode="@HUXERUI_WINDOWS_MSI_UPGRADE_CODE@" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of WebView Preview is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="WebView Preview" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="APPLICATIONPROGRAMMENU" Name="WebView Preview" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.Application)\**" />
+    </ComponentGroup>
+    <Component Id="ApplicationShortcut" Directory="APPLICATIONPROGRAMMENU">
+      <Shortcut Id="ApplicationStartMenuShortcut" Name="WebView Preview"
+                Target="[INSTALLFOLDER]example_web_view.exe" WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveApplicationProgramMenu" On="uninstall" />
+      <RegistryValue Root="HKLM" Key="Software\org.huxerui.lib.webview.preview\WebView Preview" Name="installed"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Id="ApplicationDesktopShortcut" Directory="DesktopFolder">
+      <Shortcut Id="ApplicationDesktopShortcutLink" Name="WebView Preview"
+                Target="[INSTALLFOLDER]example_web_view.exe" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKLM" Key="Software\org.huxerui.lib.webview.preview\WebView Preview" Name="desktopShortcut"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Application" Title="WebView Preview" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+    <Feature Id="DesktopShortcut" Title="Desktop shortcut" Level="2" AllowAbsent="yes">
+      <Level Value="1" Condition="CREATE_DESKTOP_SHORTCUT = 1" />
+      <ComponentRef Id="ApplicationDesktopShortcut" />
+    </Feature>
+  </Package>
+</Wix>
