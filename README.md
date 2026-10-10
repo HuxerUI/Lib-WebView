@@ -162,7 +162,7 @@ View App() {
 const Application application{
     App,
     {
-        .root_hooks = {
+        .application_hooks = {
             huxerui::InstallWebView,
         },
     }
@@ -312,3 +312,28 @@ The complete public contract and user-facing API comments are available in
 ## License
 
 HuxerUI WebView is available under the [MIT License](LICENSE).
+
+### Native cookie access
+
+`controller.GetCookies(url, completion)` reads the engine's cookie store for a
+specific URL, including HttpOnly cookies, and returns a `Cookie` request-header
+value. Treat this value as a credential: do not log it or expose it to page
+JavaScript. Supported by Android CookieManager, WKHTTPCookieStore on iOS/macOS,
+and WebView2 CookieManager on Windows. Web completes with
+`webview/unsupported-cookies`; iframe script access cannot expose HttpOnly cookies.
+
+`controller.ClearCookies(completion)` deletes **all cookies in the default data
+store**, potentially affecting other WebViews using the same profile. It completes
+with an empty string. It does not delete localStorage or the HTTP cache.
+
+Both commands require a mounted controller. As with other controller commands,
+`false` means the command was not accepted; `true` is not a success result.
+Applications must verify the imported session with their own server before
+committing login. Navigating to a callback URL is only a trigger, never proof of
+successful authentication.
+
+Android enables DOM storage for modern site login flows, and publishes navigation
+state for SPA history changes. Register the library in `application_hooks` with
+`InstallWebView(ApplicationContext&)` on current HuxerUI.
+
+Controller contract tests can be enabled with `-DWEBVIEW_BUILD_TESTS=ON`.

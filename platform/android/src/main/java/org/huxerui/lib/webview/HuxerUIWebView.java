@@ -12,6 +12,7 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.CookieManager;
 import android.webkit.WebViewClient;
 
 import org.huxerui.HuxerUIPlatformChannel;
@@ -135,6 +136,7 @@ public final class HuxerUIWebView implements HuxerUIPlatformView {
 
     private void configureWebView() {
         WebSettings settings = webView.getSettings();
+        settings.setDomStorageEnabled(true);
         settings.setAllowContentAccess(false);
         settings.setAllowFileAccess(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
@@ -257,6 +259,19 @@ public final class HuxerUIWebView implements HuxerUIPlatformView {
             case "loadHtml":
                 loadHtml(Html.decode(arguments));
                 break;
+            case "getCookies":
+                String cookies = CookieManager.getInstance().getCookie(arguments.requireString());
+                result.complete(PlatformPayload.string(cookies == null ? "" : cookies));
+                return null;
+            case "clearCookies":
+                arguments.requireString();
+                CookieManager.getInstance().removeAllCookies(removed -> {
+                    CookieManager.getInstance().flush();
+                    if (!disposed) result.complete(PlatformPayload.string(""));
+                    else result.fail("webview/disconnected", "The WebView was disconnected",
+                            PlatformPayload.nullValue());
+                });
+                return null;
             case "evaluateJavaScript":
                 webView.evaluateJavascript(arguments.requireString(), value -> {
                     if (disposed) {
@@ -348,6 +363,11 @@ public final class HuxerUIWebView implements HuxerUIPlatformView {
             properties = new Properties(url == null ? "" : url, properties.javaScriptEnabled);
             loading = true;
             emitStateEvent("loadStarted");
+            emitNavigationState();
+        }
+
+        @Override
+        public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
             emitNavigationState();
         }
 

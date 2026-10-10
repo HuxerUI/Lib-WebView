@@ -29,11 +29,18 @@ struct WebViewEvaluateJavaScriptCommand {
   WebViewJavaScriptCompletion completion;
 };
 
+struct WebViewCookieCommand {
+  std::string url;
+  bool clear = false;
+  WebViewJavaScriptCompletion completion;
+};
+
 using WebViewControllerCommand = std::variant<
     WebViewCommand,
     WebViewLoadRequestCommand,
     WebViewLoadHtmlCommand,
-    WebViewEvaluateJavaScriptCommand
+    WebViewEvaluateJavaScriptCommand,
+    WebViewCookieCommand
 >;
 
 using WebViewCommandHandler = std::function<bool(WebViewControllerCommand)>;
@@ -43,6 +50,6 @@ struct WebViewControllerAccess {
   static void Disconnect(const WebViewController& controller);
 };
 
-void InstallPlatformWebView(RootContext& root);
+void InstallPlatformWebView(ApplicationContext& root);
 
 } // namespace huxerui::detail

@@ -72,8 +72,9 @@ View WebView(WebViewProperties properties, WebViewController controller) {
   return PlatformView(detail::web_view_type, std::move(properties)).Controller(std::move(controller));
 }
 
-void InstallWebView(RootContext& root) {
-#if defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__) || defined(__EMSCRIPTEN__)
+void InstallWebView(ApplicationContext& root) {
+#if defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__) || defined(__EMSCRIPTEN__) || \
+    defined(HUXERUI_WEBVIEW_LINUX)
   detail::InstallPlatformWebView(root);
 #else
   static_cast<void>(root);

@@ -98,4 +98,16 @@ bool WebViewController::EvaluateJavaScript(
   );
 }
 
+bool WebViewController::GetCookies(std::string url, WebViewJavaScriptCompletion completion) const {
+  if (!completion || url.empty()) return false;
+  return RunCommand(state_, detail::WebViewCookieCommand{
+      .url = std::move(url), .completion = std::move(completion)});
+}
+
+bool WebViewController::ClearCookies(WebViewJavaScriptCompletion completion) const {
+  if (!completion) return false;
+  return RunCommand(state_, detail::WebViewCookieCommand{
+      .clear = true, .completion = std::move(completion)});
+}
+
 } // namespace huxerui

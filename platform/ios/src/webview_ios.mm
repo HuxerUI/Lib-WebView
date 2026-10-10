@@ -256,6 +256,51 @@ void ApplyProperties(
   }
 }
 
+void Cookies(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewCookieCommand command) {
+  auto instance = weak.lock();
+  if (!instance || instance->disposed) return;
+  WKHTTPCookieStore* store = instance->view.configuration.websiteDataStore.httpCookieStore;
+  [store getAllCookies:^(NSArray<NSHTTPCookie*>* cookies) {
+    auto live = weak.lock();
+    if (!live || live->disposed) return;
+    if (command.clear) {
+      dispatch_group_t pending = dispatch_group_create();
+      for (NSHTTPCookie* cookie in cookies) {
+        dispatch_group_enter(pending);
+        [store deleteCookie:cookie completionHandler:^{ dispatch_group_leave(pending); }];
+      }
+      dispatch_group_notify(pending, dispatch_get_main_queue(), ^{
+        auto current = weak.lock();
+        if (current && !current->disposed) command.completion(std::string{});
+      });
+      return;
+    }
+    NSURL* url = [NSURL URLWithString:ToNSString(command.url)];
+    if (url.host == nil) {
+      command.completion(PlatformError{"webview/invalid-url", "Cookie URL has no host", {}});
+      return;
+    }
+    NSMutableArray<NSString*>* pairs = [NSMutableArray array];
+    NSString* host = url.host.lowercaseString;
+    NSString* path = url.path.length == 0 ? @"/" : url.path;
+    for (NSHTTPCookie* cookie in cookies) {
+      NSString* domain = cookie.domain.lowercaseString;
+      BOOL domainCookie = [domain hasPrefix:@"."];
+      if (domainCookie) domain = [domain substringFromIndex:1];
+      if (![host isEqualToString:domain] &&
+          !(domainCookie && [host hasSuffix:[@"." stringByAppendingString:domain]])) continue;
+      NSString* cookiePath = cookie.path.length == 0 ? @"/" : cookie.path;
+      if (![path hasPrefix:cookiePath]) continue;
+      if (path.length != cookiePath.length && ![cookiePath hasSuffix:@"/"] &&
+          [path characterAtIndex:cookiePath.length] != '/') continue;
+      if (cookie.secure && ![url.scheme.lowercaseString isEqualToString:@"https"]) continue;
+      if (cookie.expiresDate != nil && [cookie.expiresDate timeIntervalSinceNow] <= 0) continue;
+      [pairs addObject:[NSString stringWithFormat:@"%@=%@", cookie.name, cookie.value]];
+    }
+    command.completion(ToString([pairs componentsJoinedByString:@"; "]));
+  }];
+}
+
 bool RunCommand(
     const std::weak_ptr<IOSWebViewInstance>& weak_instance,
     WebViewControllerCommand command
@@ -293,6 +338,10 @@ bool RunCommand(
   }
   if (const auto* value = std::get_if<WebViewLoadHtmlCommand>(&command)) {
     LoadHtml(instance, value->html);
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
+    Cookies(weak_instance, std::move(*value));
     return true;
   }
   EvaluateJavaScript(
@@ -348,7 +397,7 @@ void DisposeIOSWebView(IOSWebViewInstance& instance) {
 
 } // namespace
 
-void InstallPlatformWebView(RootContext& root) {
+void InstallPlatformWebView(ApplicationContext& root) {
   ios::PlatformViewFactory<WebViewProperties, IOSWebViewInstance, WebViewController> factory{
       .create = [](UIViewController*, const WebViewProperties& properties, PlatformEventEmitter events) {
         return CreateIOSWebView(properties, std::move(events));

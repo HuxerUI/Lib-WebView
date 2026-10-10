@@ -51,6 +51,11 @@ bool RunCommand(PlatformChannel channel, WebViewControllerCommand command) {
     );
     return true;
   }
+  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
+    channel.Invoke<std::string>(value->clear ? "clearCookies" : "getCookies",
+        value->url, std::move(value->completion));
+    return true;
+  }
   auto value = std::get<WebViewEvaluateJavaScriptCommand>(std::move(command));
   channel.Invoke<std::string>(
       "evaluateJavaScript",
@@ -62,7 +67,7 @@ bool RunCommand(PlatformChannel channel, WebViewControllerCommand command) {
 
 } // namespace
 
-void InstallPlatformWebView(RootContext& root) {
+void InstallPlatformWebView(ApplicationContext& root) {
   android::JavaPlatformViewFactory<WebViewProperties, WebViewController> factory{
       .class_name = "org.huxerui.lib.webview.HuxerUIWebView$Factory",
       .connect = [](const WebViewController& controller, PlatformChannel channel) {

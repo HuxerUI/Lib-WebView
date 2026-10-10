@@ -188,7 +188,7 @@ const Application application{
         .window = {
             .title = "WebView Preview",
         },
-        .root_hooks = {
+        .application_hooks = {
             huxerui::InstallWebView,
         },
     }

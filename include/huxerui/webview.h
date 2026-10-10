@@ -10,7 +10,7 @@
 
 #include <huxerui/event.h>
 #include <huxerui/platform_registry.h>
-#include <huxerui/root.h>
+#include <huxerui/app.h>
 #include <huxerui/state.h>
 #include <huxerui/view.h>
 
@@ -267,6 +267,16 @@ public:
   /// Evaluates JavaScript in the current document and reports its result.
   bool EvaluateJavaScript(std::string script, WebViewJavaScriptCompletion completion) const;
 
+  /// Reads the native cookie store for this URL, including HttpOnly cookies.
+  /// Returns a Cookie request-header value. Web cannot expose HttpOnly cookies
+  /// and completes with webview/unsupported-cookies. Treat the result as secret.
+  bool GetCookies(std::string url, WebViewJavaScriptCompletion completion) const;
+
+  /// Clears ALL cookies in this WebView's native data store (shared with other
+  /// WebViews using the default store). Completes with an empty string; this
+  /// does not clear localStorage or the HTTP cache. Unsupported on Web.
+  bool ClearCookies(WebViewJavaScriptCompletion completion) const;
+
   bool operator==(const WebViewController&) const = default;
 
 private:
@@ -294,12 +304,12 @@ View WebView(WebViewProperties properties, WebViewController controller);
 
 /// Registers the WebView PlatformView implementation for the active platform.
 ///
-/// Add this function to `AppOptions::root_hooks` before mounting any WebView:
+/// Add this function to `AppOptions::application_hooks` before mounting any WebView:
 /// @code
 /// const Application application{
 ///     App,
 ///     {
-///         .root_hooks = {
+///         .application_hooks = {
 ///             huxerui::InstallWebView,
 ///         },
 ///     },
@@ -307,6 +317,6 @@ View WebView(WebViewProperties properties, WebViewController controller);
 /// @endcode
 ///
 /// Installation throws when the current platform has no WebView adapter.
-void InstallWebView(RootContext& root);
+void InstallWebView(ApplicationContext& root);
 
 } // namespace huxerui
