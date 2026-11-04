@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
@@ -7,10 +8,11 @@
 #include <source_location>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <huxerui/event.h>
 #include <huxerui/platform_registry.h>
-#include <huxerui/root.h>
+#include <huxerui/app.h>
 #include <huxerui/state.h>
 #include <huxerui/view.h>
 
@@ -62,6 +64,37 @@ struct WebViewRequest {
 
   /// Encodes the value for a cross-language PlatformView adapter.
   [[nodiscard]] static PlatformPayload Encode(const WebViewRequest& value);
+};
+
+/// Controls when a cookie is sent with cross-site requests.
+enum class WebViewCookieSameSite {
+  Unspecified,
+  Lax,
+  Strict,
+  None,
+};
+
+/// Describes one native HTTP cookie.
+struct WebViewCookie {
+  std::string name;
+  std::string value;
+  std::string domain;
+  std::string path = "/";
+
+  /// An absent value creates a session cookie.
+  std::optional<std::chrono::system_clock::time_point> expires;
+
+  bool secure = false;
+  bool http_only = false;
+  WebViewCookieSameSite same_site = WebViewCookieSameSite::Unspecified;
+
+  bool operator==(const WebViewCookie&) const = default;
+
+  /// Encodes the value for a cross-language PlatformView adapter.
+  [[nodiscard]] static PlatformPayload Encode(const WebViewCookie& value);
+
+  /// Decodes a cookie returned by a cross-language adapter.
+  [[nodiscard]] static WebViewCookie Decode(const PlatformPayload& payload);
 };
 
 /// Describes HTML content loaded directly into the WebView.
@@ -211,6 +244,9 @@ struct WebViewEvents {
 /// result. Failures contain a `PlatformError`.
 using WebViewJavaScriptCompletion = std::function<void(PlatformResult<std::string>)>;
 
+/// Completion invoked by `WebViewController::GetCookieList`.
+using WebViewCookieListCompletion = std::function<void(PlatformResult<std::vector<WebViewCookie>>)>;
+
 class WebViewController;
 
 namespace detail {
@@ -267,6 +303,36 @@ public:
   /// Evaluates JavaScript in the current document and reports its result.
   bool EvaluateJavaScript(std::string script, WebViewJavaScriptCompletion completion) const;
 
+  /// Reads the native cookie store for this URL, including HttpOnly cookies.
+  /// Returns a Cookie request-header value. Web cannot expose HttpOnly cookies
+  /// and completes with webview/unsupported-cookies. Treat the result as secret.
+  bool GetCookies(std::string url, WebViewJavaScriptCompletion completion) const;
+
+  /// Creates or updates a native cookie. The URL supplies the request context.
+  /// An absent expiration creates a session cookie. Completes with an empty
+  /// string. Unsupported on Web.
+  bool SetCookie(std::string url, WebViewCookie cookie, WebViewJavaScriptCompletion completion) const;
+
+  /// Deletes the cookie identified by name, domain, and path. The URL supplies
+  /// the request context. Completes with an empty string. Unsupported on Web.
+  bool DeleteCookie(
+      std::string url,
+      std::string name,
+      std::string domain,
+      std::string path,
+      WebViewJavaScriptCompletion completion
+  ) const;
+
+  /// Reads structured native cookies matching this URL, including HttpOnly
+  /// cookies and their attributes. Unsupported on Android and Web because those
+  /// engines cannot expose complete cookie attributes through this API.
+  bool GetCookieList(std::string url, WebViewCookieListCompletion completion) const;
+
+  /// Clears ALL cookies in this WebView's native data store (shared with other
+  /// WebViews using the default store). Completes with an empty string; this
+  /// does not clear localStorage or the HTTP cache. Unsupported on Web.
+  bool ClearCookies(WebViewJavaScriptCompletion completion) const;
+
   bool operator==(const WebViewController&) const = default;
 
 private:
@@ -294,12 +360,12 @@ View WebView(WebViewProperties properties, WebViewController controller);
 
 /// Registers the WebView PlatformView implementation for the active platform.
 ///
-/// Add this function to `AppOptions::root_hooks` before mounting any WebView:
+/// Add this function to `AppOptions::application_hooks` before mounting any WebView:
 /// @code
 /// const Application application{
 ///     App,
 ///     {
-///         .root_hooks = {
+///         .application_hooks = {
 ///             huxerui::InstallWebView,
 ///         },
 ///     },
@@ -307,6 +373,6 @@ View WebView(WebViewProperties properties, WebViewController controller);
 /// @endcode
 ///
 /// Installation throws when the current platform has no WebView adapter.
-void InstallWebView(RootContext& root);
+void InstallWebView(ApplicationContext& root);
 
 } // namespace huxerui

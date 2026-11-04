@@ -162,7 +162,7 @@ View App() {
 const Application application{
     App,
     {
-        .root_hooks = {
+        .application_hooks = {
             huxerui::InstallWebView,
         },
     }
@@ -308,6 +308,43 @@ Replace `macos` with another supported platform configured on the host.
 
 The complete public contract and user-facing API comments are available in
 [`include/huxerui/webview.h`](include/huxerui/webview.h).
+
+### Native cookie access
+
+`controller.GetCookies(url, completion)` reads the engine's cookie store for a
+specific URL, including HttpOnly cookies, and returns a `Cookie` request-header
+value. Treat this value as a credential: do not log it or expose it to page
+JavaScript. Supported by Android CookieManager, WKHTTPCookieStore on iOS/macOS,
+and WebView2 CookieManager on Windows. Web completes with
+`webview/unsupported-cookies`; iframe script access cannot expose HttpOnly cookies.
+
+`controller.SetCookie(url, cookie, completion)` creates or updates a native cookie.
+`WebViewCookie` supports Domain, Path, Expires, Secure, HttpOnly, and SameSite
+attributes. An absent expiration creates a session cookie; `SameSite::None`
+requires `Secure`. Successful writes complete with an empty string.
+
+`controller.DeleteCookie(url, name, domain, path, completion)` deletes the cookie
+identified by its name, domain, and path. Deletion is idempotent and completes
+with an empty string.
+
+`controller.GetCookieList(url, completion)` returns structured cookies, including
+their attributes, through `PlatformResult<std::vector<WebViewCookie>>`. It is
+supported on iOS/macOS and Windows. Android CookieManager exposes only
+request-header values, so Android completes with
+`webview/unsupported-cookie-details` instead of inventing unavailable attributes.
+All three new operations complete with `webview/unsupported-cookies` on Web.
+
+`controller.ClearCookies(completion)` deletes **all cookies in the default data
+store**, potentially affecting other WebViews using the same profile. It completes
+with an empty string. It does not delete localStorage or the HTTP cache.
+
+All cookie commands require a mounted controller. As with other controller commands,
+`false` means the command was not accepted; `true` is not a success result.
+Applications must verify the imported session with their own server before
+committing login. Navigating to a callback URL is only a trigger, never proof of
+successful authentication.
+
+Controller contract tests can be enabled with `-DWEBVIEW_BUILD_TESTS=ON`.
 
 ## License
 

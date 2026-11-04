@@ -1,5 +1,8 @@
 #pragma once
 
+// Allows platform backends to adapt to the native cookie command API.
+#define HUXERUI_WEBVIEW_HAS_COOKIE_COMMANDS 1
+
 #include <functional>
 #include <variant>
 
@@ -29,11 +32,40 @@ struct WebViewEvaluateJavaScriptCommand {
   WebViewJavaScriptCompletion completion;
 };
 
+struct WebViewCookieCommand {
+  std::string url;
+  bool clear = false;
+  WebViewJavaScriptCompletion completion;
+};
+
+struct WebViewSetCookieCommand {
+  std::string url;
+  WebViewCookie cookie;
+  WebViewJavaScriptCompletion completion;
+};
+
+struct WebViewDeleteCookieCommand {
+  std::string url;
+  std::string name;
+  std::string domain;
+  std::string path;
+  WebViewJavaScriptCompletion completion;
+};
+
+struct WebViewGetCookieListCommand {
+  std::string url;
+  WebViewCookieListCompletion completion;
+};
+
 using WebViewControllerCommand = std::variant<
     WebViewCommand,
     WebViewLoadRequestCommand,
     WebViewLoadHtmlCommand,
-    WebViewEvaluateJavaScriptCommand
+    WebViewEvaluateJavaScriptCommand,
+    WebViewCookieCommand,
+    WebViewSetCookieCommand,
+    WebViewDeleteCookieCommand,
+    WebViewGetCookieListCommand
 >;
 
 using WebViewCommandHandler = std::function<bool(WebViewControllerCommand)>;
@@ -43,6 +75,6 @@ struct WebViewControllerAccess {
   static void Disconnect(const WebViewController& controller);
 };
 
-void InstallPlatformWebView(RootContext& root);
+void InstallPlatformWebView(ApplicationContext& root);
 
 } // namespace huxerui::detail
