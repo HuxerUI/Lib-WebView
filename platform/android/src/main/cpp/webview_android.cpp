@@ -51,6 +51,32 @@ bool RunCommand(PlatformChannel channel, WebViewControllerCommand command) {
     );
     return true;
   }
+  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
+    channel.Invoke<std::string>(value->clear ? "clearCookies" : "getCookies",
+        value->url, std::move(value->completion));
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewSetCookieCommand>(&command)) {
+    channel.Invoke<std::string>("setCookie", PlatformPayload(PlatformPayload::Object{
+        {"cookie", WebViewCookie::Encode(value->cookie)},
+        {"url", value->url},
+    }), std::move(value->completion));
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewDeleteCookieCommand>(&command)) {
+    channel.Invoke<std::string>("deleteCookie", PlatformPayload(PlatformPayload::Object{
+        {"domain", value->domain},
+        {"name", value->name},
+        {"path", value->path},
+        {"url", value->url},
+    }), std::move(value->completion));
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewGetCookieListCommand>(&command)) {
+    value->completion(PlatformError{"webview/unsupported-cookie-details",
+        "Android CookieManager cannot read cookie attributes", {}});
+    return true;
+  }
   auto value = std::get<WebViewEvaluateJavaScriptCommand>(std::move(command));
   channel.Invoke<std::string>(
       "evaluateJavaScript",
@@ -62,7 +88,7 @@ bool RunCommand(PlatformChannel channel, WebViewControllerCommand command) {
 
 } // namespace
 
-void InstallPlatformWebView(RootContext& root) {
+void InstallPlatformWebView(ApplicationContext& root) {
   android::JavaPlatformViewFactory<WebViewProperties, WebViewController> factory{
       .class_name = "org.huxerui.lib.webview.HuxerUIWebView$Factory",
       .connect = [](const WebViewController& controller, PlatformChannel channel) {

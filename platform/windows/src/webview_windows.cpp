@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <huxerui/webview.h>
 #include <huxerui/windows/platform_registry.h>
@@ -69,6 +70,9 @@ struct WindowsWebViewInstance : std::enable_shared_from_this<WindowsWebViewInsta
   EventRegistrationToken history_changed_token{};
   EventRegistrationToken title_changed_token{};
   EventRegistrationToken web_message_received_token{};
+  // Commands can arrive between the platform view connecting and WebView2 finishing
+  // initialization; they are queued instead of being dropped, then drained in order.
+  std::vector<WebViewControllerCommand> pending_commands;
   bool events_attached = false;
   bool loading = false;
   bool disposed = false;
@@ -294,6 +298,220 @@ bool LoadHtml(const std::shared_ptr<WindowsWebViewInstance>& instance, const Web
   return true;
 }
 
+bool Cookies(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewCookieCommand command) {
+  ComPtr<ICoreWebView2_2> view;
+  ComPtr<ICoreWebView2CookieManager> manager;
+  if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
+    command.completion(PlatformError{"webview/unsupported-cookies", "Cookie manager is unavailable", {}});
+    return true;
+  }
+  if (command.clear) {
+    const HRESULT cleared = manager->DeleteAllCookies();
+    if (FAILED(cleared)) command.completion(PlatformError{"webview/cookies", "Could not clear cookies", {}});
+    else command.completion(std::string{});
+    return true;
+  }
+  const std::wstring url = Utf8ToWide(command.url);
+  if (url.empty()) {
+    command.completion(PlatformError{"webview/invalid-url", "Cookie URL is not valid UTF-8", {}});
+    return true;
+  }
+  const std::weak_ptr<WindowsWebViewInstance> weak = instance;
+  auto completion = std::move(command.completion);
+  const HRESULT started = manager->GetCookies(url.c_str(),
+      Callback<ICoreWebView2GetCookiesCompletedHandler>(
+          [weak, completion](HRESULT status, ICoreWebView2CookieList* list) -> HRESULT {
+            auto live = weak.lock();
+            if (!live || live->disposed) return S_OK;
+            UINT count = 0;
+            if (FAILED(status) || !list || FAILED(list->get_Count(&count))) {
+              completion(PlatformError{"webview/cookies", "Could not read cookies", {}});
+              return S_OK;
+            }
+            std::string header;
+            for (UINT i = 0; i < count; ++i) {
+              ComPtr<ICoreWebView2Cookie> cookie;
+              if (FAILED(list->GetValueAtIndex(i, &cookie))) {
+                completion(PlatformError{"webview/cookies", "Could not read cookie entry", {}});
+                return S_OK;
+              }
+              LPWSTR name = nullptr, value = nullptr;
+              const HRESULT name_status = cookie->get_Name(&name);
+              const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_name(name, &CoTaskMemFree);
+              const HRESULT value_status = cookie->get_Value(&value);
+              const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_value(value, &CoTaskMemFree);
+              const std::string key = WideToUtf8(owned_name.get()), text = WideToUtf8(owned_value.get());
+              if (FAILED(name_status) || FAILED(value_status)) {
+                completion(PlatformError{"webview/cookies", "Could not read cookie value", {}});
+                return S_OK;
+              }
+              if (!header.empty()) header += "; ";
+              header += key + "=" + text;
+            }
+            completion(std::move(header));
+            return S_OK;
+          }).Get());
+  if (FAILED(started)) completion(PlatformError{"webview/cookies", "Could not start cookie query", {}});
+  return true;
+}
+
+bool ReadCookie(ICoreWebView2Cookie* cookie, WebViewCookie& result) {
+  LPWSTR name = nullptr, value = nullptr, domain = nullptr, path = nullptr;
+  const HRESULT name_status = cookie->get_Name(&name);
+  const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_name(name, &CoTaskMemFree);
+  const HRESULT value_status = cookie->get_Value(&value);
+  const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_value(value, &CoTaskMemFree);
+  const HRESULT domain_status = cookie->get_Domain(&domain);
+  const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_domain(domain, &CoTaskMemFree);
+  const HRESULT path_status = cookie->get_Path(&path);
+  const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned_path(path, &CoTaskMemFree);
+  double expires = 0.0;
+  BOOL session = TRUE, secure = FALSE, http_only = FALSE;
+  COREWEBVIEW2_COOKIE_SAME_SITE_KIND same_site = COREWEBVIEW2_COOKIE_SAME_SITE_KIND_NONE;
+  if (FAILED(name_status) || FAILED(value_status) || FAILED(domain_status) || FAILED(path_status) ||
+      FAILED(cookie->get_Expires(&expires)) || FAILED(cookie->get_IsSession(&session)) ||
+      FAILED(cookie->get_IsSecure(&secure)) || FAILED(cookie->get_IsHttpOnly(&http_only)) ||
+      FAILED(cookie->get_SameSite(&same_site))) {
+    return false;
+  }
+  result = WebViewCookie{
+      .name = WideToUtf8(owned_name.get()),
+      .value = WideToUtf8(owned_value.get()),
+      .domain = WideToUtf8(owned_domain.get()),
+      .path = WideToUtf8(owned_path.get()),
+      .secure = secure != FALSE,
+      .http_only = http_only != FALSE,
+  };
+  if (!session) {
+    result.expires = std::chrono::system_clock::time_point(
+        std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::duration<double>(expires)));
+  }
+  if (same_site == COREWEBVIEW2_COOKIE_SAME_SITE_KIND_LAX) result.same_site = WebViewCookieSameSite::Lax;
+  if (same_site == COREWEBVIEW2_COOKIE_SAME_SITE_KIND_STRICT) result.same_site = WebViewCookieSameSite::Strict;
+  if (same_site == COREWEBVIEW2_COOKIE_SAME_SITE_KIND_NONE) result.same_site = WebViewCookieSameSite::None;
+  return true;
+}
+
+bool SetCookie(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewSetCookieCommand command) {
+  ComPtr<ICoreWebView2_2> view;
+  ComPtr<ICoreWebView2CookieManager> manager;
+  if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
+    command.completion(PlatformError{"webview/unsupported-cookies", "Cookie manager is unavailable", {}});
+    return true;
+  }
+  if (Utf8ToWide(command.url).empty()) {
+    command.completion(PlatformError{"webview/invalid-url", "Cookie URL is not valid UTF-8", {}});
+    return true;
+  }
+  const std::wstring name = Utf8ToWide(command.cookie.name);
+  const std::wstring value = Utf8ToWide(command.cookie.value);
+  const std::wstring domain = Utf8ToWide(command.cookie.domain);
+  const std::wstring path = Utf8ToWide(command.cookie.path);
+  if (name.empty() || domain.empty() || path.empty() || (value.empty() && !command.cookie.value.empty())) {
+    command.completion(PlatformError{"webview/invalid-cookie", "Cookie text is not valid UTF-8", {}});
+    return true;
+  }
+  ComPtr<ICoreWebView2Cookie> cookie;
+  HRESULT status = manager->CreateCookie(name.c_str(), value.c_str(), domain.c_str(), path.c_str(), &cookie);
+  if (SUCCEEDED(status) && command.cookie.expires.has_value()) {
+    status = cookie->put_Expires(std::chrono::duration<double>(command.cookie.expires->time_since_epoch()).count());
+  }
+  if (SUCCEEDED(status)) status = cookie->put_IsSecure(command.cookie.secure ? TRUE : FALSE);
+  if (SUCCEEDED(status)) status = cookie->put_IsHttpOnly(command.cookie.http_only ? TRUE : FALSE);
+  COREWEBVIEW2_COOKIE_SAME_SITE_KIND same_site = COREWEBVIEW2_COOKIE_SAME_SITE_KIND_NONE;
+  switch (command.cookie.same_site) {
+    case WebViewCookieSameSite::Unspecified:
+      break;
+    case WebViewCookieSameSite::Lax:
+      same_site = COREWEBVIEW2_COOKIE_SAME_SITE_KIND_LAX;
+      break;
+    case WebViewCookieSameSite::Strict:
+      same_site = COREWEBVIEW2_COOKIE_SAME_SITE_KIND_STRICT;
+      break;
+    case WebViewCookieSameSite::None:
+      same_site = COREWEBVIEW2_COOKIE_SAME_SITE_KIND_NONE;
+      break;
+  }
+  if (SUCCEEDED(status) && command.cookie.same_site != WebViewCookieSameSite::Unspecified) {
+    status = cookie->put_SameSite(same_site);
+  }
+  if (FAILED(status)) {
+    command.completion(PlatformError{"webview/invalid-cookie", "Could not create the WebView2 cookie", {}});
+    return true;
+  }
+  status = manager->AddOrUpdateCookie(cookie.Get());
+  if (FAILED(status)) command.completion(PlatformError{"webview/cookies", "Could not set cookie", {}});
+  else command.completion(std::string{});
+  return true;
+}
+
+bool DeleteCookie(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewDeleteCookieCommand command) {
+  ComPtr<ICoreWebView2_2> view;
+  ComPtr<ICoreWebView2CookieManager> manager;
+  if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
+    command.completion(PlatformError{"webview/unsupported-cookies", "Cookie manager is unavailable", {}});
+    return true;
+  }
+  if (Utf8ToWide(command.url).empty()) {
+    command.completion(PlatformError{"webview/invalid-url", "Cookie URL is not valid UTF-8", {}});
+    return true;
+  }
+  const std::wstring name = Utf8ToWide(command.name);
+  const std::wstring domain = Utf8ToWide(command.domain);
+  const std::wstring path = Utf8ToWide(command.path);
+  if (name.empty() || domain.empty() || path.empty()) {
+    command.completion(PlatformError{"webview/invalid-cookie", "Cookie identity is not valid UTF-8", {}});
+    return true;
+  }
+  const HRESULT status =
+      manager->DeleteCookiesWithDomainAndPath(name.c_str(), domain.c_str(), path.c_str());
+  if (FAILED(status)) command.completion(PlatformError{"webview/cookies", "Could not delete cookie", {}});
+  else command.completion(std::string{});
+  return true;
+}
+
+bool GetCookieList(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewGetCookieListCommand command) {
+  ComPtr<ICoreWebView2_2> view;
+  ComPtr<ICoreWebView2CookieManager> manager;
+  if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
+    command.completion(PlatformError{"webview/unsupported-cookies", "Cookie manager is unavailable", {}});
+    return true;
+  }
+  const std::wstring url = Utf8ToWide(command.url);
+  if (url.empty()) {
+    command.completion(PlatformError{"webview/invalid-url", "Cookie URL is not valid UTF-8", {}});
+    return true;
+  }
+  const std::weak_ptr<WindowsWebViewInstance> weak = instance;
+  auto completion = std::move(command.completion);
+  const HRESULT started = manager->GetCookies(url.c_str(),
+      Callback<ICoreWebView2GetCookiesCompletedHandler>(
+          [weak, completion](HRESULT status, ICoreWebView2CookieList* list) -> HRESULT {
+            auto live = weak.lock();
+            if (!live || live->disposed) return S_OK;
+            UINT count = 0;
+            if (FAILED(status) || !list || FAILED(list->get_Count(&count))) {
+              completion(PlatformError{"webview/cookies", "Could not read cookies", {}});
+              return S_OK;
+            }
+            std::vector<WebViewCookie> cookies;
+            cookies.reserve(count);
+            for (UINT i = 0; i < count; ++i) {
+              ComPtr<ICoreWebView2Cookie> cookie;
+              WebViewCookie value;
+              if (FAILED(list->GetValueAtIndex(i, &cookie)) || !ReadCookie(cookie.Get(), value)) {
+                completion(PlatformError{"webview/cookies", "Could not read cookie entry", {}});
+                return S_OK;
+              }
+              cookies.push_back(std::move(value));
+            }
+            completion(std::move(cookies));
+            return S_OK;
+          }).Get());
+  if (FAILED(started)) completion(PlatformError{"webview/cookies", "Could not start cookie query", {}});
+  return true;
+}
+
 bool EvaluateJavaScript(
     const std::shared_ptr<WindowsWebViewInstance>& instance,
     WebViewEvaluateJavaScriptCommand command
@@ -483,6 +701,8 @@ void AttachEvents(const std::shared_ptr<WindowsWebViewInstance>& instance) {
   instance->events_attached = true;
 }
 
+void DrainPendingCommands(const std::weak_ptr<WindowsWebViewInstance>& instance);
+
 void InitializeWebView(const std::shared_ptr<WindowsWebViewInstance>& instance) {
   std::weak_ptr<WindowsWebViewInstance> weak_instance = instance;
   const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
@@ -496,6 +716,7 @@ void InitializeWebView(const std::shared_ptr<WindowsWebViewInstance>& instance) 
               return S_OK;
             }
             if (FAILED(result) || environment == nullptr) {
+              current->pending_commands.clear();
               EmitLoadError(
                   current,
                   "windows/webview2/environment",
@@ -516,6 +737,7 @@ void InitializeWebView(const std::shared_ptr<WindowsWebViewInstance>& instance) 
                         return S_OK;
                       }
                       if (FAILED(controller_result) || controller == nullptr) {
+                        value->pending_commands.clear();
                         EmitLoadError(
                             value,
                             "windows/webview2/controller",
@@ -526,6 +748,7 @@ void InitializeWebView(const std::shared_ptr<WindowsWebViewInstance>& instance) 
                       value->controller = controller;
                       controller->get_CoreWebView2(&value->web_view);
                       if (!value->web_view) {
+                        value->pending_commands.clear();
                         EmitLoadError(
                             value,
                             "windows/webview2/view",
@@ -538,6 +761,7 @@ void InitializeWebView(const std::shared_ptr<WindowsWebViewInstance>& instance) 
                       const WebViewProperties properties = value->properties;
                       value->properties.url.clear();
                       ApplyProperties(value, properties);
+                      DrainPendingCommands(weak_instance);
                       return S_OK;
                     })
                     .Get()
@@ -585,8 +809,14 @@ bool RunCommand(
     WebViewControllerCommand command
 ) {
   std::shared_ptr<WindowsWebViewInstance> instance = weak_instance.lock();
-  if (!instance || instance->disposed || !instance->web_view) {
+  if (!instance || instance->disposed) {
     return false;
+  }
+  // The controller connects as soon as the platform view is created, while the WebView2
+  // environment/controller are still being created asynchronously. Queue instead of dropping.
+  if (!instance->web_view) {
+    instance->pending_commands.push_back(std::move(command));
+    return true;
   }
   if (const auto* value = std::get_if<WebViewCommand>(&command)) {
     switch (*value) {
@@ -612,14 +842,39 @@ bool RunCommand(
   if (const auto* value = std::get_if<WebViewLoadHtmlCommand>(&command)) {
     return LoadHtml(instance, value->html);
   }
+  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
+    return Cookies(instance, std::move(*value));
+  }
+  if (auto* value = std::get_if<WebViewSetCookieCommand>(&command)) {
+    return SetCookie(instance, std::move(*value));
+  }
+  if (auto* value = std::get_if<WebViewDeleteCookieCommand>(&command)) {
+    return DeleteCookie(instance, std::move(*value));
+  }
+  if (auto* value = std::get_if<WebViewGetCookieListCommand>(&command)) {
+    return GetCookieList(instance, std::move(*value));
+  }
   return EvaluateJavaScript(
       instance,
       std::get<WebViewEvaluateJavaScriptCommand>(std::move(command))
   );
 }
 
+void DrainPendingCommands(const std::weak_ptr<WindowsWebViewInstance>& weak_instance) {
+  std::shared_ptr<WindowsWebViewInstance> instance = weak_instance.lock();
+  if (!instance || instance->disposed || !instance->web_view) {
+    return;
+  }
+  std::vector<WebViewControllerCommand> pending = std::move(instance->pending_commands);
+  instance->pending_commands.clear();
+  for (auto& command : pending) {
+    RunCommand(weak_instance, std::move(command));
+  }
+}
+
 void DisposeWindowsWebView(WindowsWebViewInstance& instance) {
   instance.disposed = true;
+  instance.pending_commands.clear();
   if (instance.events_attached && instance.web_view) {
     instance.web_view->remove_NavigationStarting(instance.navigation_starting_token);
     instance.web_view->remove_NavigationCompleted(instance.navigation_completed_token);
@@ -642,7 +897,7 @@ void DisposeWindowsWebView(WindowsWebViewInstance& instance) {
 
 } // namespace
 
-void InstallPlatformWebView(RootContext& root) {
+void InstallPlatformWebView(ApplicationContext& root) {
   windows::PlatformViewFactory<WebViewProperties, WindowsWebViewInstance, WebViewController> factory{
       .create = CreateWindowsWebView,
       .view = [](const std::shared_ptr<WindowsWebViewInstance>& instance) {

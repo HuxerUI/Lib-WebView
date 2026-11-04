@@ -18,9 +18,9 @@ android {
 }
 
 dependencies {
-    if (rootProject.ext.has("huxeruiUsesSource") && rootProject.gradle.ext.huxeruiUsesSource) {
+    if (rootProject.findProject(":HuxerUI") != null) {
         compileOnly project(":HuxerUI")
-    } else if (rootProject.ext.has("huxeruiAndroidArchive")) {
+    } else if (rootProject.gradle.ext.has("huxeruiAndroidArchive")) {
         compileOnly files(rootProject.gradle.ext.huxeruiAndroidArchive)
     } else {
         def huxeruiHome = System.getenv("HUXERUI_HOME")

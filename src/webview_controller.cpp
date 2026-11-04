@@ -44,6 +44,12 @@ std::string UppercaseAscii(std::string value) {
   return value;
 }
 
+bool ValidCookieText(const std::string& value) {
+  return std::none_of(value.begin(), value.end(), [](unsigned char character) {
+    return character == '\0' || character == '\r' || character == '\n' || character == ';';
+  });
+}
+
 bool RunCommand(
     const std::shared_ptr<detail::WebViewControllerState>& state,
     detail::WebViewControllerCommand command
@@ -96,6 +102,58 @@ bool WebViewController::EvaluateJavaScript(
           .completion = std::move(completion),
       }
   );
+}
+
+bool WebViewController::GetCookies(std::string url, WebViewJavaScriptCompletion completion) const {
+  if (!completion || url.empty()) return false;
+  return RunCommand(state_, detail::WebViewCookieCommand{
+      .url = std::move(url), .completion = std::move(completion)});
+}
+
+bool WebViewController::SetCookie(
+    std::string url,
+    WebViewCookie cookie,
+    WebViewJavaScriptCompletion completion
+) const {
+  if (!completion || url.empty() || cookie.name.empty() || cookie.domain.empty() || cookie.path.empty() ||
+      cookie.path.front() != '/' || !ValidCookieText(cookie.name) || !ValidCookieText(cookie.value) ||
+      !ValidCookieText(cookie.domain) || !ValidCookieText(cookie.path) ||
+      (cookie.same_site == WebViewCookieSameSite::None && !cookie.secure)) {
+    return false;
+  }
+  return RunCommand(state_, detail::WebViewSetCookieCommand{
+      .url = std::move(url), .cookie = std::move(cookie), .completion = std::move(completion)});
+}
+
+bool WebViewController::DeleteCookie(
+    std::string url,
+    std::string name,
+    std::string domain,
+    std::string path,
+    WebViewJavaScriptCompletion completion
+) const {
+  if (!completion || url.empty() || name.empty() || domain.empty() || path.empty() || path.front() != '/' ||
+      !ValidCookieText(name) || !ValidCookieText(domain) || !ValidCookieText(path)) {
+    return false;
+  }
+  return RunCommand(state_, detail::WebViewDeleteCookieCommand{
+      .url = std::move(url),
+      .name = std::move(name),
+      .domain = std::move(domain),
+      .path = std::move(path),
+      .completion = std::move(completion)});
+}
+
+bool WebViewController::GetCookieList(std::string url, WebViewCookieListCompletion completion) const {
+  if (!completion || url.empty()) return false;
+  return RunCommand(state_, detail::WebViewGetCookieListCommand{
+      .url = std::move(url), .completion = std::move(completion)});
+}
+
+bool WebViewController::ClearCookies(WebViewJavaScriptCompletion completion) const {
+  if (!completion) return false;
+  return RunCommand(state_, detail::WebViewCookieCommand{
+      .clear = true, .completion = std::move(completion)});
 }
 
 } // namespace huxerui

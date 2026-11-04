@@ -12,6 +12,7 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.CookieManager;
 import android.webkit.WebViewClient;
 
 import org.huxerui.HuxerUIPlatformChannel;
@@ -35,6 +36,92 @@ public final class HuxerUIWebView implements HuxerUIPlatformView {
     private static final Set<String> HTML_FIELDS = new LinkedHashSet<>(
             Arrays.asList("baseUrl", "content")
     );
+    private static final Set<String> COOKIE_FIELDS = new LinkedHashSet<>(
+            Arrays.asList("domain", "expires", "httpOnly", "name", "path", "sameSite", "secure", "value")
+    );
+    private static final Set<String> SET_COOKIE_FIELDS = new LinkedHashSet<>(
+            Arrays.asList("cookie", "url")
+    );
+    private static final Set<String> DELETE_COOKIE_FIELDS = new LinkedHashSet<>(
+            Arrays.asList("domain", "name", "path", "url")
+    );
+
+    private static final class Cookie {
+        final String name;
+        final String value;
+        final String domain;
+        final String path;
+        final Double expires;
+        final boolean secure;
+        final boolean httpOnly;
+        final String sameSite;
+
+        Cookie(
+                String name,
+                String value,
+                String domain,
+                String path,
+                Double expires,
+                boolean secure,
+                boolean httpOnly,
+                String sameSite
+        ) {
+            this.name = name;
+            this.value = value;
+            this.domain = domain;
+            this.path = path;
+            this.expires = expires;
+            this.secure = secure;
+            this.httpOnly = httpOnly;
+            this.sameSite = sameSite;
+        }
+
+        static Cookie decode(PlatformPayload payload) {
+            payload.rejectUnknownFields(COOKIE_FIELDS);
+            PlatformPayload expires = payload.requireField("expires");
+            return new Cookie(
+                    payload.requireField("name").requireString(),
+                    payload.requireField("value").requireString(),
+                    payload.requireField("domain").requireString(),
+                    payload.requireField("path").requireString(),
+                    expires.isNull() ? null : expires.requireDouble(),
+                    payload.requireField("secure").requireBoolean(),
+                    payload.requireField("httpOnly").requireBoolean(),
+                    payload.requireField("sameSite").requireString()
+            );
+        }
+
+        String toSetCookieValue() {
+            StringBuilder value = new StringBuilder()
+                    .append(name).append('=').append(this.value)
+                    .append("; Domain=").append(domain)
+                    .append("; Path=").append(path);
+            if (expires != null) {
+                long maxAge = Math.max(0L, (long) Math.ceil(expires - System.currentTimeMillis() / 1000.0));
+                value.append("; Max-Age=").append(maxAge);
+            }
+            if (secure) value.append("; Secure");
+            if (httpOnly) value.append("; HttpOnly");
+            if (!"unspecified".equals(sameSite)) {
+                String attribute;
+                switch (sameSite) {
+                    case "lax":
+                        attribute = "Lax";
+                        break;
+                    case "strict":
+                        attribute = "Strict";
+                        break;
+                    case "none":
+                        attribute = "None";
+                        break;
+                    default:
+                        throw new IllegalArgumentException("Unknown SameSite value: " + sameSite);
+                }
+                value.append("; SameSite=").append(attribute);
+            }
+            return value.toString();
+        }
+    }
 
     private static final class Properties {
         final String url;
@@ -257,6 +344,43 @@ public final class HuxerUIWebView implements HuxerUIPlatformView {
             case "loadHtml":
                 loadHtml(Html.decode(arguments));
                 break;
+            case "getCookies":
+                String cookies = CookieManager.getInstance().getCookie(arguments.requireString());
+                result.complete(PlatformPayload.string(cookies == null ? "" : cookies));
+                return null;
+            case "setCookie": {
+                arguments.rejectUnknownFields(SET_COOKIE_FIELDS);
+                setCookie(
+                        arguments.requireField("url").requireString(),
+                        Cookie.decode(arguments.requireField("cookie")),
+                        result
+                );
+                return null;
+            }
+            case "deleteCookie": {
+                arguments.rejectUnknownFields(DELETE_COOKIE_FIELDS);
+                Cookie cookie = new Cookie(
+                        arguments.requireField("name").requireString(),
+                        "",
+                        arguments.requireField("domain").requireString(),
+                        arguments.requireField("path").requireString(),
+                        0.0,
+                        false,
+                        false,
+                        "unspecified"
+                );
+                setCookie(arguments.requireField("url").requireString(), cookie, result);
+                return null;
+            }
+            case "clearCookies":
+                arguments.requireString();
+                CookieManager.getInstance().removeAllCookies(removed -> {
+                    CookieManager.getInstance().flush();
+                    if (!disposed) result.complete(PlatformPayload.string(""));
+                    else result.fail("webview/disconnected", "The WebView was disconnected",
+                            PlatformPayload.nullValue());
+                });
+                return null;
             case "evaluateJavaScript":
                 webView.evaluateJavascript(arguments.requireString(), value -> {
                     if (disposed) {
@@ -305,6 +429,20 @@ public final class HuxerUIWebView implements HuxerUIPlatformView {
                 PlatformPayload.nullValue()
         );
         return false;
+    }
+
+    private void setCookie(String url, Cookie cookie, HuxerUIPlatformChannel.Result result) {
+        CookieManager manager = CookieManager.getInstance();
+        manager.setCookie(url, cookie.toSetCookieValue(), accepted -> {
+            manager.flush();
+            if (disposed) {
+                result.fail("webview/disconnected", "The WebView was disconnected", PlatformPayload.nullValue());
+            } else if (accepted) {
+                result.complete(PlatformPayload.string(""));
+            } else {
+                result.fail("webview/cookies", "Android CookieManager rejected the cookie", PlatformPayload.nullValue());
+            }
+        });
     }
 
     private void loadHtml(Html html) {
