@@ -342,19 +342,24 @@ bool RunCommand(
     BeginHtmlLoad(instance, value->html);
     return true;
   }
-  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
+  if (auto* value = std::get_if<WebViewGetCookiesCommand>(&command)) {
+    value->completion(PlatformError{"webview/unsupported-cookies",
+        "Browser iframe cookie stores cannot expose HttpOnly cookies", {}});
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewClearCookiesCommand>(&command)) {
     value->completion(PlatformError{"webview/unsupported-cookies",
         "Browser iframe cookie stores cannot expose HttpOnly cookies", {}});
     return true;
   }
   if (auto* value = std::get_if<WebViewSetCookieCommand>(&command)) {
     value->completion(PlatformError{"webview/unsupported-cookies",
-        "Browser iframe cookie stores cannot set native cookies", {}});
+        "Browser iframe cookie stores cannot set platform cookies", {}});
     return true;
   }
   if (auto* value = std::get_if<WebViewDeleteCookieCommand>(&command)) {
     value->completion(PlatformError{"webview/unsupported-cookies",
-        "Browser iframe cookie stores cannot delete native cookies", {}});
+        "Browser iframe cookie stores cannot delete platform cookies", {}});
     return true;
   }
   if (auto* value = std::get_if<WebViewGetCookieListCommand>(&command)) {

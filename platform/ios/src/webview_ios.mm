@@ -164,15 +164,15 @@ void LoadRequest(
     return;
   }
 
-  NSMutableURLRequest* native_request = [NSMutableURLRequest requestWithURL:url];
-  native_request.HTTPMethod = ToNSString(method);
+  NSMutableURLRequest* platform_request = [NSMutableURLRequest requestWithURL:url];
+  platform_request.HTTPMethod = ToNSString(method);
   for (const auto& [name, value] : request.headers) {
-    [native_request setValue:ToNSString(value) forHTTPHeaderField:ToNSString(name)];
+    [platform_request setValue:ToNSString(value) forHTTPHeaderField:ToNSString(name)];
   }
   if (request.body.has_value()) {
-    native_request.HTTPBody = [NSData dataWithBytes:request.body->data() length:request.body->size()];
+    platform_request.HTTPBody = [NSData dataWithBytes:request.body->data() length:request.body->size()];
   }
-  [instance->view loadRequest:native_request];
+  [instance->view loadRequest:platform_request];
 }
 
 void LoadHtml(const std::shared_ptr<IOSWebViewInstance>& instance, const WebViewHtml& html) {
@@ -278,7 +278,7 @@ bool CookieMatchesUrl(NSHTTPCookie* cookie, NSURL* url) {
   return cookie.expiresDate == nil || [cookie.expiresDate timeIntervalSinceNow] > 0;
 }
 
-WebViewCookie CookieFromNative(NSHTTPCookie* cookie) {
+WebViewCookie CookieFromPlatform(NSHTTPCookie* cookie) {
   WebViewCookie result{
       .name = ToString(cookie.name),
       .value = ToString(cookie.value),
@@ -302,7 +302,7 @@ WebViewCookie CookieFromNative(NSHTTPCookie* cookie) {
   return result;
 }
 
-NSHTTPCookie* NativeCookie(const WebViewCookie& cookie) {
+NSHTTPCookie* CookieToPlatform(const WebViewCookie& cookie) {
   NSMutableDictionary<NSHTTPCookiePropertyKey, id>* properties = [@{
     NSHTTPCookieName: ToNSString(cookie.name),
     NSHTTPCookieValue: ToNSString(cookie.value),
@@ -333,14 +333,14 @@ NSHTTPCookie* NativeCookie(const WebViewCookie& cookie) {
   return [NSHTTPCookie cookieWithProperties:properties];
 }
 
-void SetCookie(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewSetCookieCommand command) {
+void SetCookieCommand(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewSetCookieCommand command) {
   auto instance = weak.lock();
   if (!instance || instance->disposed) return;
   if (CookieUrl(command.url) == nil) {
     command.completion(PlatformError{"webview/invalid-url", "Cookie URL has no host", {}});
     return;
   }
-  NSHTTPCookie* cookie = NativeCookie(command.cookie);
+  NSHTTPCookie* cookie = CookieToPlatform(command.cookie);
   if (cookie == nil) {
     command.completion(PlatformError{"webview/invalid-cookie", "Cookie attributes are invalid", {}});
     return;
@@ -352,7 +352,7 @@ void SetCookie(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewSetCookieCo
   }];
 }
 
-void DeleteCookie(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewDeleteCookieCommand command) {
+void DeleteCookieCommand(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewDeleteCookieCommand command) {
   auto instance = weak.lock();
   if (!instance || instance->disposed) return;
   if (CookieUrl(command.url) == nil) {
@@ -383,7 +383,7 @@ void DeleteCookie(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewDeleteCo
   }];
 }
 
-void GetCookieList(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewGetCookieListCommand command) {
+void GetCookieListCommand(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewGetCookieListCommand command) {
   auto instance = weak.lock();
   if (!instance || instance->disposed) return;
   NSURL* url = CookieUrl(command.url);
@@ -397,31 +397,19 @@ void GetCookieList(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewGetCook
     if (!live || live->disposed) return;
     std::vector<WebViewCookie> result;
     for (NSHTTPCookie* cookie in cookies) {
-      if (CookieMatchesUrl(cookie, url)) result.push_back(CookieFromNative(cookie));
+      if (CookieMatchesUrl(cookie, url)) result.push_back(CookieFromPlatform(cookie));
     }
     command.completion(std::move(result));
   }];
 }
 
-void Cookies(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewCookieCommand command) {
+void GetCookiesCommand(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewGetCookiesCommand command) {
   auto instance = weak.lock();
   if (!instance || instance->disposed) return;
   WKHTTPCookieStore* store = instance->view.configuration.websiteDataStore.httpCookieStore;
   [store getAllCookies:^(NSArray<NSHTTPCookie*>* cookies) {
     auto live = weak.lock();
     if (!live || live->disposed) return;
-    if (command.clear) {
-      dispatch_group_t pending = dispatch_group_create();
-      for (NSHTTPCookie* cookie in cookies) {
-        dispatch_group_enter(pending);
-        [store deleteCookie:cookie completionHandler:^{ dispatch_group_leave(pending); }];
-      }
-      dispatch_group_notify(pending, dispatch_get_main_queue(), ^{
-        auto current = weak.lock();
-        if (current && !current->disposed) command.completion(std::string{});
-      });
-      return;
-    }
     NSURL* url = CookieUrl(command.url);
     if (url == nil) {
       command.completion(PlatformError{"webview/invalid-url", "Cookie URL has no host", {}});
@@ -434,6 +422,25 @@ void Cookies(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewCookieCommand
       }
     }
     command.completion(ToString([pairs componentsJoinedByString:@"; "]));
+  }];
+}
+
+void ClearCookiesCommand(const std::weak_ptr<IOSWebViewInstance>& weak, WebViewClearCookiesCommand command) {
+  auto instance = weak.lock();
+  if (!instance || instance->disposed) return;
+  WKHTTPCookieStore* store = instance->view.configuration.websiteDataStore.httpCookieStore;
+  [store getAllCookies:^(NSArray<NSHTTPCookie*>* cookies) {
+    auto live = weak.lock();
+    if (!live || live->disposed) return;
+    dispatch_group_t pending = dispatch_group_create();
+    for (NSHTTPCookie* cookie in cookies) {
+      dispatch_group_enter(pending);
+      [store deleteCookie:cookie completionHandler:^{ dispatch_group_leave(pending); }];
+    }
+    dispatch_group_notify(pending, dispatch_get_main_queue(), ^{
+      auto current = weak.lock();
+      if (current && !current->disposed) command.completion(std::string{});
+    });
   }];
 }
 
@@ -476,20 +483,24 @@ bool RunCommand(
     LoadHtml(instance, value->html);
     return true;
   }
-  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
-    Cookies(weak_instance, std::move(*value));
+  if (auto* value = std::get_if<WebViewGetCookiesCommand>(&command)) {
+    GetCookiesCommand(weak_instance, std::move(*value));
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewClearCookiesCommand>(&command)) {
+    ClearCookiesCommand(weak_instance, std::move(*value));
     return true;
   }
   if (auto* value = std::get_if<WebViewSetCookieCommand>(&command)) {
-    SetCookie(weak_instance, std::move(*value));
+    SetCookieCommand(weak_instance, std::move(*value));
     return true;
   }
   if (auto* value = std::get_if<WebViewDeleteCookieCommand>(&command)) {
-    DeleteCookie(weak_instance, std::move(*value));
+    DeleteCookieCommand(weak_instance, std::move(*value));
     return true;
   }
   if (auto* value = std::get_if<WebViewGetCookieListCommand>(&command)) {
-    GetCookieList(weak_instance, std::move(*value));
+    GetCookieListCommand(weak_instance, std::move(*value));
     return true;
   }
   EvaluateJavaScript(

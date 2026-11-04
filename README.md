@@ -314,10 +314,10 @@ compatibility with the host renderer. An explicitly set
 `WEBKIT_DISABLE_DMABUF_RENDERER` value takes precedence.
 
 Use `WebViewProperties::url` for an initial URL, or issue controller commands
-after the native view connects. Commands issued while disconnected return
+after the platform view connects. Commands issued while disconnected return
 `false` and are not retained.
 
-The backend implements native cookie read, write, delete, list, and clear
+The backend implements platform cookie read, write, delete, list, and clear
 operations using WebKitCookieManager.
 
 ## Preview application
@@ -340,7 +340,7 @@ Replace `macos` with another supported platform configured on the host.
 The complete public contract and user-facing API comments are available in
 [`include/huxerui/webview.h`](include/huxerui/webview.h).
 
-### Native cookie access
+### Platform cookie access
 
 `controller.GetCookies(url, completion)` reads the engine's cookie store for a
 specific URL, including HttpOnly cookies, and returns a `Cookie` request-header
@@ -349,7 +349,7 @@ JavaScript. Supported by Android CookieManager, WKHTTPCookieStore on iOS/macOS,
 WebView2 CookieManager on Windows, and WebKitCookieManager on Linux. Web completes with
 `webview/unsupported-cookies`; iframe script access cannot expose HttpOnly cookies.
 
-`controller.SetCookie(url, cookie, completion)` creates or updates a native cookie.
+`controller.SetCookie(url, cookie, completion)` creates or updates a platform cookie.
 `WebViewCookie` supports Domain, Path, Expires, Secure, HttpOnly, and SameSite
 attributes. An absent expiration creates a session cookie; `SameSite::None`
 requires `Secure`. Successful writes complete with an empty string.

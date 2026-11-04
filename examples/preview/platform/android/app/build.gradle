@@ -99,14 +99,14 @@ androidComponents.onVariants(androidComponents.selector().all()) { variant ->
     variant.externalNativeBuild.arguments.add("-DHUXERUI_ANDROID_APP_INTEGRATION_ROOT=${integrationRoot.absolutePath}")
     def resourceRoot = layout.buildDirectory.dir("generated/huxerui/resources/${variant.name}").get().asFile
     variant.externalNativeBuild.arguments.add("-DHUXERUI_ANDROID_RESOURCE_OUTPUT_ROOT=${resourceRoot.absolutePath}")
-    def nativeLibraries = variant.artifacts.get(SingleArtifact.MERGED_NATIVE_LIBS.INSTANCE)
-    def packagedAbis = nativeLibraries.map { directory ->
+    def mergedLibraries = variant.artifacts.get(SingleArtifact.MERGED_NATIVE_LIBS.INSTANCE)
+    def packagedAbis = mergedLibraries.map { directory ->
         new File(directory.asFile, "lib").listFiles()?.findAll { it.isDirectory() }?.sort { it.name } ?: []
     }
     def libraryFile = layout.buildDirectory.file("generated/huxerui/app-library/${variant.name}.txt").get().asFile
     def resolveLibrary = tasks.register("resolveHuxerUI${variant.name.capitalize()}AppLibrary") {
-        // The public artifact carries the native build dependency and reflects device-only ABI builds.
-        inputs.dir(nativeLibraries)
+        // The public artifact carries the C++ build dependency and reflects device-only ABI builds.
+        inputs.dir(mergedLibraries)
         inputs.dir(integrationRoot)
         outputs.file(libraryFile)
         doLast {
