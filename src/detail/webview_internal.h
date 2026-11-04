@@ -1,8 +1,5 @@
 #pragma once
 
-// Allows platform backends to adapt to the native cookie command API.
-#define HUXERUI_WEBVIEW_HAS_COOKIE_COMMANDS 1
-
 #include <functional>
 #include <variant>
 

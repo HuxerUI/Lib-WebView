@@ -133,7 +133,7 @@ View WebView(WebViewProperties properties, WebViewController controller) {
 
 void InstallWebView(ApplicationContext& root) {
 #if defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__) || defined(__EMSCRIPTEN__) || \
-    defined(HUXERUI_WEBVIEW_LINUX)
+    defined(__linux__)
   detail::InstallPlatformWebView(root);
 #else
   static_cast<void>(root);
