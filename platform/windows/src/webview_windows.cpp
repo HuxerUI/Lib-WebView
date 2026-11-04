@@ -241,13 +241,13 @@ bool LoadRequest(
   }
 
   const std::wstring url = Utf8ToWide(request.url);
-  const std::wstring native_method = Utf8ToWide(method);
+  const std::wstring wide_method = Utf8ToWide(method);
   std::string header_text;
   for (const auto& [name, value] : request.headers) {
     header_text += name + ": " + value + "\r\n";
   }
   const std::wstring headers = Utf8ToWide(header_text);
-  if (url.empty() || native_method.empty() || (!header_text.empty() && headers.empty())) {
+  if (url.empty() || wide_method.empty() || (!header_text.empty() && headers.empty())) {
     EmitLoadError(instance, "webview/invalid-request", "The WebView request is not valid UTF-8");
     return true;
   }
@@ -268,19 +268,19 @@ bool LoadRequest(
     }
   }
 
-  ComPtr<ICoreWebView2WebResourceRequest> native_request;
+  ComPtr<ICoreWebView2WebResourceRequest> platform_request;
   const HRESULT created = environment->CreateWebResourceRequest(
       url.c_str(),
-      native_method.c_str(),
+      wide_method.c_str(),
       body.Get(),
       headers.empty() ? nullptr : headers.c_str(),
-      &native_request
+      &platform_request
   );
-  if (FAILED(created) || !native_request) {
+  if (FAILED(created) || !platform_request) {
     EmitLoadError(instance, "webview/invalid-request", "Could not create the WebView request");
     return true;
   }
-  if (FAILED(web_view->NavigateWithWebResourceRequest(native_request.Get()))) {
+  if (FAILED(web_view->NavigateWithWebResourceRequest(platform_request.Get()))) {
     EmitLoadError(instance, "webview/request-failed", "Could not load the WebView request");
   }
   return true;
@@ -298,17 +298,11 @@ bool LoadHtml(const std::shared_ptr<WindowsWebViewInstance>& instance, const Web
   return true;
 }
 
-bool Cookies(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewCookieCommand command) {
+bool GetCookiesCommand(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewGetCookiesCommand command) {
   ComPtr<ICoreWebView2_2> view;
   ComPtr<ICoreWebView2CookieManager> manager;
   if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
     command.completion(PlatformError{"webview/unsupported-cookies", "Cookie manager is unavailable", {}});
-    return true;
-  }
-  if (command.clear) {
-    const HRESULT cleared = manager->DeleteAllCookies();
-    if (FAILED(cleared)) command.completion(PlatformError{"webview/cookies", "Could not clear cookies", {}});
-    else command.completion(std::string{});
     return true;
   }
   const std::wstring url = Utf8ToWide(command.url);
@@ -355,6 +349,19 @@ bool Cookies(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewCoo
   return true;
 }
 
+bool ClearCookiesCommand(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewClearCookiesCommand command) {
+  ComPtr<ICoreWebView2_2> view;
+  ComPtr<ICoreWebView2CookieManager> manager;
+  if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
+    command.completion(PlatformError{"webview/unsupported-cookies", "Cookie manager is unavailable", {}});
+    return true;
+  }
+  const HRESULT cleared = manager->DeleteAllCookies();
+  if (FAILED(cleared)) command.completion(PlatformError{"webview/cookies", "Could not clear cookies", {}});
+  else command.completion(std::string{});
+  return true;
+}
+
 bool ReadCookie(ICoreWebView2Cookie* cookie, WebViewCookie& result) {
   LPWSTR name = nullptr, value = nullptr, domain = nullptr, path = nullptr;
   const HRESULT name_status = cookie->get_Name(&name);
@@ -392,7 +399,7 @@ bool ReadCookie(ICoreWebView2Cookie* cookie, WebViewCookie& result) {
   return true;
 }
 
-bool SetCookie(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewSetCookieCommand command) {
+bool SetCookieCommand(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewSetCookieCommand command) {
   ComPtr<ICoreWebView2_2> view;
   ComPtr<ICoreWebView2CookieManager> manager;
   if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
@@ -445,7 +452,7 @@ bool SetCookie(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewS
   return true;
 }
 
-bool DeleteCookie(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewDeleteCookieCommand command) {
+bool DeleteCookieCommand(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewDeleteCookieCommand command) {
   ComPtr<ICoreWebView2_2> view;
   ComPtr<ICoreWebView2CookieManager> manager;
   if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
@@ -470,7 +477,7 @@ bool DeleteCookie(const std::shared_ptr<WindowsWebViewInstance>& instance, WebVi
   return true;
 }
 
-bool GetCookieList(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewGetCookieListCommand command) {
+bool GetCookieListCommand(const std::shared_ptr<WindowsWebViewInstance>& instance, WebViewGetCookieListCommand command) {
   ComPtr<ICoreWebView2_2> view;
   ComPtr<ICoreWebView2CookieManager> manager;
   if (FAILED(instance->web_view.As(&view)) || FAILED(view->get_CookieManager(&manager))) {
@@ -842,17 +849,20 @@ bool RunCommand(
   if (const auto* value = std::get_if<WebViewLoadHtmlCommand>(&command)) {
     return LoadHtml(instance, value->html);
   }
-  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
-    return Cookies(instance, std::move(*value));
+  if (auto* value = std::get_if<WebViewGetCookiesCommand>(&command)) {
+    return GetCookiesCommand(instance, std::move(*value));
+  }
+  if (auto* value = std::get_if<WebViewClearCookiesCommand>(&command)) {
+    return ClearCookiesCommand(instance, std::move(*value));
   }
   if (auto* value = std::get_if<WebViewSetCookieCommand>(&command)) {
-    return SetCookie(instance, std::move(*value));
+    return SetCookieCommand(instance, std::move(*value));
   }
   if (auto* value = std::get_if<WebViewDeleteCookieCommand>(&command)) {
-    return DeleteCookie(instance, std::move(*value));
+    return DeleteCookieCommand(instance, std::move(*value));
   }
   if (auto* value = std::get_if<WebViewGetCookieListCommand>(&command)) {
-    return GetCookieList(instance, std::move(*value));
+    return GetCookieListCommand(instance, std::move(*value));
   }
   return EvaluateJavaScript(
       instance,

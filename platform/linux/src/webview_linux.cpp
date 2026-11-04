@@ -246,7 +246,7 @@ void CookiesListedForClear(GObject* source, GAsyncResult* result, gpointer data)
   g_list_free_full(cookies, reinterpret_cast<GDestroyNotify>(soup_cookie_free));
 }
 
-void RunCookieCommand(const std::shared_ptr<LinuxWebViewInstance>& instance, WebViewCookieCommand command) {
+void GetCookiesCommand(const std::shared_ptr<LinuxWebViewInstance>& instance, WebViewGetCookiesCommand command) {
   if (!instance || instance->disposed || instance->web_view == nullptr) {
     command.completion(PlatformError{"webview/disconnected", "The WebView is disconnected", {}});
     return;
@@ -257,18 +257,28 @@ void RunCookieCommand(const std::shared_ptr<LinuxWebViewInstance>& instance, Web
     command.completion(PlatformError{"webview/cookies", "The WebKitGTK cookie store is unavailable", {}});
     return;
   }
-  if (command.clear) {
-    auto batch = std::make_shared<CookieDeleteBatch>(manager, std::move(command.completion));
-    webkit_cookie_manager_get_all_cookies(manager, nullptr, CookiesListedForClear,
-                                           new std::shared_ptr<CookieDeleteBatch>(std::move(batch)));
-    return;
-  }
   if (!ValidCookieUri(command.url)) {
     command.completion(PlatformError{"webview/invalid-url", "Cookie URL must be an absolute HTTP or HTTPS URL", {}});
     return;
   }
   auto* operation = new CookieOperation(manager, std::move(command.completion));
   webkit_cookie_manager_get_cookies(manager, command.url.c_str(), nullptr, CookiesReady, operation);
+}
+
+void ClearCookiesCommand(const std::shared_ptr<LinuxWebViewInstance>& instance, WebViewClearCookiesCommand command) {
+  if (!instance || instance->disposed || instance->web_view == nullptr) {
+    command.completion(PlatformError{"webview/disconnected", "The WebView is disconnected", {}});
+    return;
+  }
+  WebKitNetworkSession* session = webkit_web_view_get_network_session(instance->web_view);
+  WebKitCookieManager* manager = session != nullptr ? webkit_network_session_get_cookie_manager(session) : nullptr;
+  if (manager == nullptr) {
+    command.completion(PlatformError{"webview/cookies", "The WebKitGTK cookie store is unavailable", {}});
+    return;
+  }
+  auto batch = std::make_shared<CookieDeleteBatch>(manager, std::move(command.completion));
+  webkit_cookie_manager_get_all_cookies(manager, nullptr, CookiesListedForClear,
+                                      new std::shared_ptr<CookieDeleteBatch>(std::move(batch)));
 }
 
 struct CookieListOperation {
@@ -337,7 +347,7 @@ void CookieAdded(GObject* source, GAsyncResult* result, gpointer data) {
   operation->completion(std::string{});
 }
 
-void RunSetCookieCommand(const std::shared_ptr<LinuxWebViewInstance>& instance, WebViewSetCookieCommand command) {
+void SetCookieCommand(const std::shared_ptr<LinuxWebViewInstance>& instance, WebViewSetCookieCommand command) {
   if (!instance || instance->disposed || instance->web_view == nullptr) {
     command.completion(PlatformError{"webview/disconnected", "The WebView is disconnected", {}});
     return;
@@ -457,8 +467,8 @@ void CookiesListedForExactDelete(GObject* source, GAsyncResult* result, gpointer
   if (batch->pending == 0) batch->completion(std::string{});
 }
 
-void RunDeleteCookieCommand(const std::shared_ptr<LinuxWebViewInstance>& instance,
-                            WebViewDeleteCookieCommand command) {
+void DeleteCookieCommand(const std::shared_ptr<LinuxWebViewInstance>& instance,
+                         WebViewDeleteCookieCommand command) {
   if (!instance || instance->disposed || instance->web_view == nullptr) {
     command.completion(PlatformError{"webview/disconnected", "The WebView is disconnected", {}});
     return;
@@ -479,8 +489,8 @@ void RunDeleteCookieCommand(const std::shared_ptr<LinuxWebViewInstance>& instanc
                                          new std::shared_ptr<CookieDeleteExactBatch>(std::move(batch)));
 }
 
-void RunGetCookieListCommand(const std::shared_ptr<LinuxWebViewInstance>& instance,
-                             WebViewGetCookieListCommand command) {
+void GetCookieListCommand(const std::shared_ptr<LinuxWebViewInstance>& instance,
+                          WebViewGetCookieListCommand command) {
   if (!instance || instance->disposed || instance->web_view == nullptr) {
     command.completion(PlatformError{"webview/disconnected", "The WebView is disconnected", {}});
     return;
@@ -542,20 +552,24 @@ bool RunCommand(const std::weak_ptr<LinuxWebViewInstance>& weak_instance, WebVie
     LoadHtml(instance, value->html);
     return true;
   }
-  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
-    RunCookieCommand(instance, std::move(*value));
+  if (auto* value = std::get_if<WebViewGetCookiesCommand>(&command)) {
+    GetCookiesCommand(instance, std::move(*value));
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewClearCookiesCommand>(&command)) {
+    ClearCookiesCommand(instance, std::move(*value));
     return true;
   }
   if (auto* value = std::get_if<WebViewSetCookieCommand>(&command)) {
-    RunSetCookieCommand(instance, std::move(*value));
+    SetCookieCommand(instance, std::move(*value));
     return true;
   }
   if (auto* value = std::get_if<WebViewDeleteCookieCommand>(&command)) {
-    RunDeleteCookieCommand(instance, std::move(*value));
+    DeleteCookieCommand(instance, std::move(*value));
     return true;
   }
   if (auto* value = std::get_if<WebViewGetCookieListCommand>(&command)) {
-    RunGetCookieListCommand(instance, std::move(*value));
+    GetCookieListCommand(instance, std::move(*value));
     return true;
   }
   EvaluateJavaScript(instance, std::get<WebViewEvaluateJavaScriptCommand>(std::move(command)));

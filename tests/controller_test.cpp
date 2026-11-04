@@ -6,7 +6,7 @@
 int main() {
   using namespace huxerui;
   WebViewController controller;
-  int failures = 0, queries = 0;
+  int failures = 0, queries = 0, clears = 0;
   auto check = [&](bool passed, const char* message) {
     if (!passed) { std::printf("FAIL %s\n", message); ++failures; }
   };
@@ -39,6 +39,7 @@ int main() {
   check(!controller.DeleteCookie("https://example.com/api", "session", "example.com", "/api", empty_completion),
         "disconnected delete rejected");
   check(!controller.GetCookieList("https://example.com/api", list_completion), "disconnected list rejected");
+  check(!controller.ClearCookies(empty_completion), "disconnected clear rejected");
   int writes = 0, deletions = 0, lists = 0;
   detail::WebViewControllerAccess::Connect(controller, [&](detail::WebViewControllerCommand command) {
     if (auto* set = std::get_if<detail::WebViewSetCookieCommand>(&command)) {
@@ -60,17 +61,17 @@ int main() {
       list->completion(std::vector<WebViewCookie>{cookie});
       return true;
     }
-    auto* cookies = std::get_if<detail::WebViewCookieCommand>(&command);
-    check(cookies != nullptr, "typed cookie command");
-    if (!cookies) return false;
-    ++queries;
-    if (cookies->clear) {
-      check(cookies->url.empty(), "clear all has no URL filter");
-      cookies->completion(std::string{});
-    } else {
+    if (auto* cookies = std::get_if<detail::WebViewGetCookiesCommand>(&command)) {
+      ++queries;
       check(cookies->url == "https://example.com/api", "cookie URL retained");
       cookies->completion(std::string("session=secret"));
+      return true;
     }
+    auto* clear = std::get_if<detail::WebViewClearCookiesCommand>(&command);
+    check(clear != nullptr, "typed clear cookies command");
+    if (!clear) return false;
+    ++clears;
+    clear->completion(std::string{});
     return true;
   });
   check(!controller.GetCookies("", completion), "empty URL rejected");
@@ -104,11 +105,12 @@ int main() {
         "delete requires completion");
   check(!controller.GetCookieList("", list_completion), "list requires URL");
   check(!controller.GetCookieList("https://example.com/api", {}), "list requires completion");
-  check(controller.GetCookies("https://example.com/api", completion) && completed, "query returns result");
+  check(controller.GetCookies("https://example.com/api", completion) && completed && queries == 1 && clears == 0,
+        "query returns result without clearing cookies");
   bool cleared = false;
   check(controller.ClearCookies([&](PlatformResult<std::string> result) {
     cleared = std::holds_alternative<std::string>(result) && std::get<std::string>(result).empty();
-  }) && cleared, "clear completes with empty string");
+  }) && cleared && clears == 1 && queries == 1, "clear completes without querying cookies");
   completed = false;
   check(controller.SetCookie("https://example.com/api", cookie, empty_completion) && completed && writes == 1,
         "set completes with empty string");
@@ -118,7 +120,9 @@ int main() {
   check(controller.GetCookieList("https://example.com/api", list_completion) && listed && lists == 1,
         "list returns structured cookies");
   detail::WebViewControllerAccess::Disconnect(controller);
-  check(!controller.ClearCookies(completion) && queries == 2, "disconnect prevents commands");
+  check(!controller.ClearCookies(completion) && clears == 1, "disconnect prevents clear");
+  check(!controller.GetCookies("https://example.com/api", completion) && queries == 1,
+        "disconnect prevents query");
   check(!controller.SetCookie("https://example.com/api", cookie, empty_completion) && writes == 1,
         "disconnect prevents set");
   check(!controller.DeleteCookie("https://example.com/api", "session", "example.com", "/api", empty_completion) &&

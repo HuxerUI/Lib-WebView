@@ -51,9 +51,13 @@ bool RunCommand(PlatformChannel channel, WebViewControllerCommand command) {
     );
     return true;
   }
-  if (auto* value = std::get_if<WebViewCookieCommand>(&command)) {
-    channel.Invoke<std::string>(value->clear ? "clearCookies" : "getCookies",
+  if (auto* value = std::get_if<WebViewGetCookiesCommand>(&command)) {
+    channel.Invoke<std::string>("getCookies",
         value->url, std::move(value->completion));
+    return true;
+  }
+  if (auto* value = std::get_if<WebViewClearCookiesCommand>(&command)) {
+    channel.Invoke<std::string>("clearCookies", std::string{}, std::move(value->completion));
     return true;
   }
   if (auto* value = std::get_if<WebViewSetCookieCommand>(&command)) {
