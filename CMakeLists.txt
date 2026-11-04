@@ -29,12 +29,9 @@ if (WIN32)
     list(APPEND LIBRARY_SOURCE_FILES ${LIBRARY_WINDOWS_SOURCE_FILES})
 endif ()
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    file(GLOB_RECURSE LIBRARY_LINUX_SOURCE_FILES CONFIGURE_DEPENDS
-            "${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/src/*.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/src/*.cc"
-            "${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/src/*.cxx"
+    list(APPEND LIBRARY_SOURCE_FILES
+            "${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/src/webview_linux.cpp"
     )
-    list(APPEND LIBRARY_SOURCE_FILES ${LIBRARY_LINUX_SOURCE_FILES})
 endif ()
 if (EMSCRIPTEN)
     file(GLOB_RECURSE LIBRARY_WEB_SOURCE_FILES CONFIGURE_DEPENDS
@@ -91,6 +88,10 @@ target_include_directories(webview PRIVATE
 
 if (APPLE)
     target_link_libraries(webview PRIVATE "-framework WebKit")
+endif ()
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/WebKitGTK.cmake")
+    huxerui_link_webkitgtk(webview)
 endif ()
 if (WIN32)
     set(WEBVIEW2_SDK_ROOT "$ENV{WEBVIEW2_SDK_ROOT}" CACHE PATH "Microsoft.Web.WebView2 NuGet package root")
