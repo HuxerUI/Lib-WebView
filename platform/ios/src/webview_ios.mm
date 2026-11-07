@@ -600,6 +600,7 @@ void InstallPlatformWebView(ApplicationContext& root) {
 - (void)webView:(WKWebView*)webView
     decidePolicyForNavigationAction:(WKNavigationAction*)navigationAction
                     decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+  WEBVIEW_UNUSED(webView);
   std::shared_ptr<huxerui::detail::IOSWebViewInstance> instance = instance_.lock();
   if (!instance || instance->disposed) {
     decisionHandler(WKNavigationActionPolicyCancel);
@@ -617,7 +618,7 @@ void InstallPlatformWebView(ApplicationContext& root) {
 }
 
 - (void)webView:(WKWebView*)webView didStartProvisionalNavigation:(WKNavigation*)navigation {
-  static_cast<void>(navigation);
+  WEBVIEW_UNUSED(navigation);
   std::shared_ptr<huxerui::detail::IOSWebViewInstance> instance = instance_.lock();
   if (instance) {
     instance->properties.url = huxerui::detail::ToString(webView.URL.absoluteString);
@@ -627,14 +628,14 @@ void InstallPlatformWebView(ApplicationContext& root) {
 }
 
 - (void)webView:(WKWebView*)webView didCommitNavigation:(WKNavigation*)navigation {
-  static_cast<void>(webView);
-  static_cast<void>(navigation);
+  WEBVIEW_UNUSED(webView);
+  WEBVIEW_UNUSED(navigation);
   huxerui::detail::EmitNavigationState(instance_.lock(), true);
 }
 
 - (void)webView:(WKWebView*)webView didFinishNavigation:(WKNavigation*)navigation {
-  static_cast<void>(webView);
-  static_cast<void>(navigation);
+  WEBVIEW_UNUSED(webView);
+  WEBVIEW_UNUSED(navigation);
   std::shared_ptr<huxerui::detail::IOSWebViewInstance> instance = instance_.lock();
   huxerui::detail::EmitStateEvent<huxerui::WebViewEvents::LoadFinished>(instance, false);
   huxerui::detail::EmitNavigationState(instance, false);
@@ -643,14 +644,14 @@ void InstallPlatformWebView(ApplicationContext& root) {
 - (void)webView:(WKWebView*)webView
     didFailProvisionalNavigation:(WKNavigation*)navigation
                        withError:(NSError*)error {
-  static_cast<void>(navigation);
+  WEBVIEW_UNUSED(navigation);
   std::shared_ptr<huxerui::detail::IOSWebViewInstance> instance = instance_.lock();
   huxerui::detail::EmitLoadError(instance, error, webView.URL.absoluteString);
   huxerui::detail::EmitNavigationState(instance, false);
 }
 
 - (void)webView:(WKWebView*)webView didFailNavigation:(WKNavigation*)navigation withError:(NSError*)error {
-  static_cast<void>(navigation);
+  WEBVIEW_UNUSED(navigation);
   std::shared_ptr<huxerui::detail::IOSWebViewInstance> instance = instance_.lock();
   huxerui::detail::EmitLoadError(instance, error, webView.URL.absoluteString);
   huxerui::detail::EmitNavigationState(instance, false);
@@ -658,7 +659,7 @@ void InstallPlatformWebView(ApplicationContext& root) {
 
 - (void)userContentController:(WKUserContentController*)userContentController
       didReceiveScriptMessage:(WKScriptMessage*)message {
-  static_cast<void>(userContentController);
+  WEBVIEW_UNUSED(userContentController);
   std::shared_ptr<huxerui::detail::IOSWebViewInstance> instance = instance_.lock();
   if (!instance || instance->disposed || ![message.name isEqualToString:@"huxerui"]) {
     return;
@@ -673,9 +674,9 @@ void InstallPlatformWebView(ApplicationContext& root) {
                       ofObject:(id)object
                         change:(NSDictionary<NSKeyValueChangeKey, id>*)change
                        context:(void*)context {
-  static_cast<void>(object);
-  static_cast<void>(change);
-  static_cast<void>(context);
+  WEBVIEW_UNUSED(object);
+  WEBVIEW_UNUSED(change);
+  WEBVIEW_UNUSED(context);
   if (![keyPath isEqualToString:@"estimatedProgress"]) {
     return;
   }

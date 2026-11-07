@@ -5,6 +5,8 @@
 
 #include <huxerui/webview.h>
 
+#define WEBVIEW_UNUSED(name) static_cast<void>(name)
+
 namespace huxerui::detail {
 
 inline constexpr char web_view_type[] = "huxerui/webview";

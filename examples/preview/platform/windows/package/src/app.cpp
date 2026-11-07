@@ -214,13 +214,13 @@ View InstallerContent() {
             .With(Frame{.min_width = 112.0F})
     );
   } else if (status.phase == InstallerPhase::Ready && status.product == InstallerProductState::Absent) {
-    const TextEditingValue destination_value = destination.Get().value_or(
+    const TextEditingValue destination_value = destination->value_or(
         TextEditingValue::FromText(InstallPathText(status.default_destination))
     );
     const std::optional<std::filesystem::path> destination_path = ParseInstallPath(destination_value.text);
     const std::filesystem::path browse_initial = destination_path.value_or(status.default_destination);
     const bool create_desktop_shortcut =
-        desktop_shortcut.Get().value_or(status.default_create_desktop_shortcut);
+        desktop_shortcut->value_or(status.default_create_desktop_shortcut);
     eyebrow = installer_strings::installation;
     heading = installer_strings::ready_to_install;
     details.push_back(

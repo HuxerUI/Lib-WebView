@@ -136,7 +136,7 @@ void InstallWebView(ApplicationContext& root) {
     defined(__linux__)
   detail::InstallPlatformWebView(root);
 #else
-  static_cast<void>(root);
+  WEBVIEW_UNUSED(root);
   throw std::logic_error("HuxerUI WebView is not available on this platform");
 #endif
 }
