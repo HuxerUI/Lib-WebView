@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 
+# CMake initializes Apple deployment defaults during the first project() call.
+# Explicit settings and toolchains retain ownership of their target platform.
+if (CMAKE_HOST_APPLE AND (NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        AND NOT CMAKE_TOOLCHAIN_FILE AND "$ENV{CMAKE_TOOLCHAIN_FILE}" STREQUAL ""
+        AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET AND "$ENV{MACOSX_DEPLOYMENT_TARGET}" STREQUAL "")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS deployment target")
+endif ()
+
 project(web_view VERSION 0.1.0 LANGUAGES NONE)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/HuxerUIProject.cmake")
@@ -100,12 +108,12 @@ if (WIN32)
         if (POLICY CMP0135)
             cmake_policy(SET CMP0135 NEW)
         endif ()
-        FetchContent_Declare(huxerui_webview2_sdk
+        FetchContent_Declare(huxerui_wv2
                 URL "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4191.47/microsoft.web.webview2.1.0.4191.47.nupkg"
                 URL_HASH SHA256=F492BBF547D0DA329553B6727435B677579B1E9F91CC9E4A1AD029366D5F23D0
         )
-        FetchContent_MakeAvailable(huxerui_webview2_sdk)
-        set(WEBVIEW2_SDK_ROOT "${huxerui_webview2_sdk_SOURCE_DIR}")
+        FetchContent_MakeAvailable(huxerui_wv2)
+        set(WEBVIEW2_SDK_ROOT "${huxerui_wv2_SOURCE_DIR}")
     endif ()
     find_path(WEBVIEW2_INCLUDE_DIRECTORY
             NAMES WebView2.h
@@ -138,6 +146,7 @@ option(WEBVIEW_BUILD_TESTS "Build WebView controller contract tests" OFF)
 if (WEBVIEW_BUILD_TESTS)
     enable_testing()
     add_executable(webview_controller_test tests/controller_test.cpp)
+    target_compile_features(webview_controller_test PRIVATE cxx_std_20)
     target_include_directories(webview_controller_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(webview_controller_test PRIVATE HuxerUI::WebView HuxerUI::huxerui)
     add_test(NAME webview_controller COMMAND webview_controller_test)
