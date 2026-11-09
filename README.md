@@ -4,7 +4,8 @@ HuxerUI WebView is a portable embedded web-content component for HuxerUI applica
 for navigation, custom requests, HTML content, JavaScript evaluation, page-to-application messaging, and observable
 browser state.
 
-The library uses the platform web engine and integrates it as a HuxerUI `PlatformView`.
+The library uses the platform web engine and integrates it as a HuxerUI `PlatformView` on Android, iOS,
+macOS, Windows, and Web. On Linux with HuxerUI 0.4.0, `InstallWebView` throws `std::logic_error`.
 
 ## Preview
 
@@ -289,37 +290,6 @@ Receive it with:
 The message bridge does not make page content trusted. Validate message formats and enforce application authorization
 before performing privileged actions.
 
-## Linux backend
-
-Linux first looks for WebKitGTK 6.0 (version 2.40 or later) through pkg-config.
-If it is not installed, the build automatically downloads WebKitGTK 2.54.2 from
-the official release archive, verifies its SHA-256, and builds and installs it
-under the build directory without administrator access. Installing the
-distribution's WebKitGTK development package avoids building the browser engine
-from source.
-
-The source fallback requires Ninja and the WebKitGTK build dependencies,
-including the system GTK 4 and libsoup 3 development packages. See the
-[upstream build instructions](https://docs.webkit.org/Build%20%26%20Debug/BuildOptions.html).
-Keep the generated installation with its libraries, helper processes, and
-resources available when running applications that use the downloaded engine.
-
-The backend supports URL and HTML loading, GET requests with custom headers,
-JavaScript evaluation, navigation events, and the `window.huxerui.postMessage`
-bridge. WebKitGTK does not expose setters for a navigation request's method or
-body, so non-GET requests and request bodies emit a load error.
-
-The widget is shown explicitly, and DMABUF rendering is disabled by default for
-compatibility with the host renderer. An explicitly set
-`WEBKIT_DISABLE_DMABUF_RENDERER` value takes precedence.
-
-Use `WebViewProperties::url` for an initial URL, or issue controller commands
-after the platform view connects. Commands issued while disconnected return
-`false` and are not retained.
-
-The backend implements platform cookie read, write, delete, list, and clear
-operations using WebKitCookieManager.
-
 ## Preview application
 
 The preview under [`examples/preview`](examples/preview) provides a browser-style interface and demonstrates navigation,
@@ -346,7 +316,7 @@ The complete public contract and user-facing API comments are available in
 specific URL, including HttpOnly cookies, and returns a `Cookie` request-header
 value. Treat this value as a credential: do not log it or expose it to page
 JavaScript. Supported by Android CookieManager, WKHTTPCookieStore on iOS/macOS,
-WebView2 CookieManager on Windows, and WebKitCookieManager on Linux. Web completes with
+and WebView2 CookieManager on Windows. Web completes with
 `webview/unsupported-cookies`; iframe script access cannot expose HttpOnly cookies.
 
 `controller.SetCookie(url, cookie, completion)` creates or updates a platform cookie.
@@ -360,7 +330,7 @@ with an empty string.
 
 `controller.GetCookieList(url, completion)` returns structured cookies, including
 their attributes, through `PlatformResult<std::vector<WebViewCookie>>`. It is
-supported on iOS/macOS, Windows, and Linux. Android CookieManager exposes only
+supported on iOS/macOS and Windows. Android CookieManager exposes only
 request-header values, so Android completes with
 `webview/unsupported-cookie-details` instead of inventing unavailable attributes.
 All three new operations complete with `webview/unsupported-cookies` on Web.
