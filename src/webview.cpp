@@ -89,6 +89,9 @@ PlatformPayload WebViewHtml::Encode(const WebViewHtml& value) {
 PlatformPayload WebViewProperties::Encode(const WebViewProperties& value) {
   return PlatformPayload::Object{
       {"javaScriptEnabled", value.java_script_enabled},
+      {"themeBrightness", value.theme_brightness.has_value()
+          ? PlatformPayload(*value.theme_brightness == ThemeBrightness::Dark ? "dark" : "light")
+          : PlatformPayload{}},
       {"url", value.url},
   };
 }

@@ -211,6 +211,28 @@ controller.LoadHtml({
 Controller commands return `false` when the controller is not connected or the active platform cannot accept the
 operation. A `true` result means the command was accepted, not that navigation or evaluation completed.
 
+## Color scheme
+
+Set `theme_brightness` to request light or dark web content. The default `std::nullopt` follows the host environment:
+
+```cpp
+WebView({
+    .url = requested_url,
+    .theme_brightness = ThemeBrightness::Dark,
+}, controller)
+```
+
+Windows, iOS, and macOS apply this preference before the initial navigation and when the property changes, including
+the `prefers-color-scheme` media query. Restoring `std::nullopt` returns to the system preference. On Windows, the
+override is scoped to each WebView2 instance and does not change shared Profile preferences.
+
+Android WebView follows the host application's `isLightTheme`; explicit per-view Light and Dark overrides are
+unsupported. Web uses iframe `color-scheme` propagation, so behavior depends on browser support and the embedded
+page's own color-scheme support. Cross-origin preference propagation does not grant DOM or script access, and normal
+iframe embedding policies still apply.
+
+This is a preference, not algorithmic darkening: the library does not force-invert content or rewrite site CSS.
+
 ## Events
 
 Events are attached to the `WebView` declaration with `.On<Event>(handler)`.

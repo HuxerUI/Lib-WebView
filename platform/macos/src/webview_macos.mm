@@ -251,6 +251,14 @@ void ApplyProperties(
   instance->view.configuration.preferences.javaScriptEnabled = properties.java_script_enabled;
 #pragma clang diagnostic pop
 
+  NSAppearance* appearance = nil;
+  if (properties.theme_brightness.has_value()) {
+    appearance = [NSAppearance appearanceNamed:*properties.theme_brightness == ThemeBrightness::Dark
+                                                   ? NSAppearanceNameDarkAqua
+                                                   : NSAppearanceNameAqua];
+  }
+  instance->view.appearance = appearance;
+
   if (url_changed) {
     LoadUrl(instance, properties.url);
   }

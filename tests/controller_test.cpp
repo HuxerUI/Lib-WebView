@@ -10,6 +10,16 @@ int main() {
   auto check = [&](bool passed, const char* message) {
     if (!passed) { std::printf("FAIL %s\n", message); ++failures; }
   };
+  const PlatformPayload system_theme = WebViewProperties::Encode({});
+  check(system_theme.AsObject().at("themeBrightness").IsNull(), "system theme encodes as null");
+  const PlatformPayload light_theme = WebViewProperties::Encode({
+      .theme_brightness = ThemeBrightness::Light,
+  });
+  check(light_theme.AsObject().at("themeBrightness").AsString() == "light", "light theme encoding");
+  const PlatformPayload dark_theme = WebViewProperties::Encode({
+      .theme_brightness = ThemeBrightness::Dark,
+  });
+  check(dark_theme.AsObject().at("themeBrightness").AsString() == "dark", "dark theme encoding");
   const WebViewCookie cookie{
       .name = "session",
       .value = "secret",
