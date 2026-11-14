@@ -144,7 +144,8 @@ WebViewNavigationState NavigationState(const std::shared_ptr<WindowsWebViewInsta
   const std::string title = WideToUtf8(title_value);
   CoTaskMemFree(title_value);
   return {
-      .url = CurrentUrl(*instance),
+      // NavigationStarting precedes the Source update; properties holds its URI.
+      .url = instance->loading ? instance->properties.url : CurrentUrl(*instance),
       .title = title,
       .is_loading = instance->loading,
       .progress = instance->loading ? 0.0 : 1.0,
