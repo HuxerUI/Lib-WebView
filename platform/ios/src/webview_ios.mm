@@ -251,6 +251,14 @@ void ApplyProperties(
   instance->view.configuration.preferences.javaScriptEnabled = properties.java_script_enabled;
 #pragma clang diagnostic pop
 
+  UIUserInterfaceStyle style = UIUserInterfaceStyleUnspecified;
+  if (properties.theme_brightness.has_value()) {
+    style = *properties.theme_brightness == ThemeBrightness::Dark
+                ? UIUserInterfaceStyleDark
+                : UIUserInterfaceStyleLight;
+  }
+  instance->view.overrideUserInterfaceStyle = style;
+
   if (url_changed) {
     LoadUrl(instance, properties.url);
   }

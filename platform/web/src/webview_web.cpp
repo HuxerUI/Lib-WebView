@@ -164,6 +164,20 @@ void ApplySandbox(WebPlatformViewInstance& instance) {
   }
 }
 
+void ApplyThemeBrightness(WebPlatformViewInstance& instance) {
+  emscripten::val style = instance.element["style"];
+  if (!instance.properties.theme_brightness.has_value()) {
+    style.call<void>("removeProperty", std::string("color-scheme"));
+    return;
+  }
+  style.set(
+      "colorScheme",
+      *instance.properties.theme_brightness == ThemeBrightness::Dark
+          ? std::string("dark")
+          : std::string("light")
+  );
+}
+
 void BeginUrlLoad(
     const std::shared_ptr<WebPlatformViewInstance>& instance,
     const std::string& url
@@ -210,6 +224,7 @@ void ApplyProperties(
 
   instance->properties = properties;
   ApplySandbox(*instance);
+  ApplyThemeBrightness(*instance);
   if (initial) {
     const std::uint32_t identity = instance->identity;
     emscripten_async_call(

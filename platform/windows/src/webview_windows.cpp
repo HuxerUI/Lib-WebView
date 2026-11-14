@@ -588,6 +588,20 @@ void ApplyProperties(const std::shared_ptr<WindowsWebViewInstance>& instance, co
     settings->put_IsScriptEnabled(properties.java_script_enabled);
     settings->put_IsWebMessageEnabled(TRUE);
   }
+  const wchar_t* media_parameters = L"{\"media\":\"\",\"features\":[]}";
+  if (properties.theme_brightness.has_value()) {
+    media_parameters = *properties.theme_brightness == ThemeBrightness::Dark
+                           ? L"{\"features\":[{\"name\":\"prefers-color-scheme\",\"value\":\"dark\"}]}"
+                           : L"{\"features\":[{\"name\":\"prefers-color-scheme\",\"value\":\"light\"}]}";
+  }
+  // PreferredColorScheme is profile-wide; keep the override scoped to this WebView2 instance.
+  instance->web_view->CallDevToolsProtocolMethod(
+      L"Emulation.setEmulatedMedia",
+      media_parameters,
+      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+          [](HRESULT, LPCWSTR) { return S_OK; }
+      ).Get()
+  );
   if (url_changed) {
     const std::wstring url = Utf8ToWide(properties.url);
     if (url.empty() && !properties.url.empty()) {
