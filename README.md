@@ -4,8 +4,7 @@ HuxerUI WebView is a portable embedded web-content component for HuxerUI applica
 for navigation, custom requests, HTML content, JavaScript evaluation, page-to-application messaging, and observable
 browser state.
 
-The library uses the platform web engine and integrates it as a HuxerUI `PlatformView` on Android, iOS,
-macOS, Windows, and Web. On Linux with HuxerUI 0.4.0, `InstallWebView` throws `std::logic_error`.
+The library uses the platform web engine and integrates it as a HuxerUI `PlatformView`.
 
 ## Preview
 
@@ -77,6 +76,7 @@ macOS, Windows, and Web. On Linux with HuxerUI 0.4.0, `InstallWebView` throws `s
 | --- | --- | --- |
 | Android | Android WebView | Android API 23 or later |
 | iOS | WKWebView | iOS 15 or later |
+| Linux | WebKitGTK | WebKitGTK 6.0 (2.40 or later); requires HuxerUI 0.5.0 or later |
 | macOS | WKWebView | WebKit is linked by the library |
 | Windows | WebView2 | Downloads the WebView2 SDK when building and requires the WebView2 Runtime when running |
 | Web | iframe | Subject to browser embedding and cross-origin restrictions |
@@ -226,10 +226,10 @@ Windows, iOS, and macOS apply this preference before the initial navigation and 
 the `prefers-color-scheme` media query. Restoring `std::nullopt` returns to the system preference. On Windows, the
 override is scoped to each WebView2 instance and does not change shared Profile preferences.
 
-Android WebView follows the host application's `isLightTheme`; explicit per-view Light and Dark overrides are
-unsupported. Web uses iframe `color-scheme` propagation, so behavior depends on browser support and the embedded
-page's own color-scheme support. Cross-origin preference propagation does not grant DOM or script access, and normal
-iframe embedding policies still apply.
+Android WebView follows the host application's `isLightTheme`, and Linux WebKitGTK follows the host environment;
+explicit per-view Light and Dark overrides are unsupported. Web uses iframe `color-scheme` propagation, so behavior
+depends on browser support and the embedded page's own color-scheme support. Cross-origin preference propagation does
+not grant DOM or script access, and normal iframe embedding policies still apply.
 
 This is a preference, not algorithmic darkening: the library does not force-invert content or rewrite site CSS.
 
@@ -312,6 +312,26 @@ Receive it with:
 The message bridge does not make page content trusted. Validate message formats and enforce application authorization
 before performing privileged actions.
 
+## Linux backend
+
+Linux integrates WebKitGTK through HuxerUI's GTK `PlatformView` host (HuxerUI 0.5.0 or later). CMake first looks for
+WebKitGTK 6.0 (version 2.40 or later) through `pkg-config`. If it is not installed, the build downloads WebKitGTK
+2.54.2 from the official release archive, verifies its SHA-256, and builds and installs it under the build directory
+without administrator access. Installing the distribution's WebKitGTK development package avoids building the browser
+engine from source.
+
+The source fallback requires Ninja and the WebKitGTK build dependencies, including the system GTK 4 and libsoup 3
+development packages. See the [upstream build instructions](https://docs.webkit.org/Build%20%26%20Debug/BuildOptions.html).
+Keep the generated installation with its libraries, helper processes, and resources available when running applications
+that use the downloaded engine.
+
+The backend supports URL and HTML loading, GET requests with custom headers, JavaScript evaluation, navigation events,
+platform cookie management through `WebKitCookieManager`, and the `window.huxerui.postMessage` bridge. WebKitGTK does
+not expose setters for a navigation request's method or body, so non-GET requests and request bodies emit a load error.
+
+DMABUF rendering is disabled by default for compatibility with the host renderer; an explicitly set
+`WEBKIT_DISABLE_DMABUF_RENDERER` value takes precedence.
+
 ## Preview application
 
 The preview under [`examples/preview`](examples/preview) provides a browser-style interface and demonstrates navigation,
@@ -338,7 +358,7 @@ The complete public contract and user-facing API comments are available in
 specific URL, including HttpOnly cookies, and returns a `Cookie` request-header
 value. Treat this value as a credential: do not log it or expose it to page
 JavaScript. Supported by Android CookieManager, WKHTTPCookieStore on iOS/macOS,
-and WebView2 CookieManager on Windows. Web completes with
+WebView2 CookieManager on Windows, and WebKitCookieManager on Linux. Web completes with
 `webview/unsupported-cookies`; iframe script access cannot expose HttpOnly cookies.
 
 `controller.SetCookie(url, cookie, completion)` creates or updates a platform cookie.
@@ -352,7 +372,7 @@ with an empty string.
 
 `controller.GetCookieList(url, completion)` returns structured cookies, including
 their attributes, through `PlatformResult<std::vector<WebViewCookie>>`. It is
-supported on iOS/macOS and Windows. Android CookieManager exposes only
+supported on iOS/macOS, Windows, and Linux. Android CookieManager exposes only
 request-header values, so Android completes with
 `webview/unsupported-cookie-details` instead of inventing unavailable attributes.
 All three new operations complete with `webview/unsupported-cookies` on Web.

@@ -128,7 +128,8 @@ struct WebViewProperties {
 
   /// The preferred brightness for web content, or std::nullopt to follow the host environment.
   /// Windows, iOS, and macOS update the engine preference. Android follows the
-  /// host application; Web uses browser-dependent iframe color-scheme propagation.
+  /// host application; Linux follows the host environment; Web uses
+  /// browser-dependent iframe color-scheme propagation.
   std::optional<ThemeBrightness> theme_brightness;
 
   bool operator==(const WebViewProperties&) const = default;
