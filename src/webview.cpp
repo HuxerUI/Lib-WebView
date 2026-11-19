@@ -135,7 +135,8 @@ View WebView(WebViewProperties properties, WebViewController controller) {
 }
 
 void InstallWebView(ApplicationContext& root) {
-#if defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__) || defined(__EMSCRIPTEN__)
+#if defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__) || defined(__EMSCRIPTEN__) || \
+    defined(__linux__)
   detail::InstallPlatformWebView(root);
 #else
   WEBVIEW_UNUSED(root);
